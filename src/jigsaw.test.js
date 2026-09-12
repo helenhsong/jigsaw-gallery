@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   DEFAULT_ARTWORK, DIFFICULTIES, TABLE_HEIGHT, TABLE_WIDTH,
-  angleDifference, createPieces, groupCount, moveGroup, pieceBounds, rotateGroup, rotatePoint, scatterPieces, snapNearbyGroups,
+  angleDifference, createPieces, fitPieceCenter, groupCount, moveGroup, pieceBounds, rotateGroup, rotatePoint, scatterPieces, snapNearbyGroups,
 } from './jigsaw.js'
 import {
   loadPuzzleCollection, loadPuzzleProgress, PUZZLE_COLLECTION_KEY, PUZZLE_STORAGE_KEY,
@@ -120,6 +120,24 @@ test('a narrow responsive floor pushes pieces inward without scaling their geome
     positions = moveGroup(positions, pieces, positions[0].group, 5000, 0, floor)
     checkBounds(pieces, positions, floor)
     assert.equal(pieces[0].width, pieceWidth)
+  }
+})
+
+test('scaled rotated pieces stay fully inside preview surfaces', () => {
+  const surface = { width: 260, height: 176 }
+  for (const difficulty of DIFFICULTIES.slice(0, 3)) {
+    const [piece] = createPieces(difficulty)
+    const scale = Math.max(0.1, Math.min(0.5, 21 / Math.sqrt(piece.width * piece.height)))
+    for (const rotation of [-165, -70, 0, 48, 137]) {
+      for (const candidate of [{ x: -100, y: -100 }, { x: 400, y: 300 }]) {
+        const center = fitPieceCenter(piece, rotation, candidate, surface, scale, 2)
+        const bounds = pieceBounds(piece, { x: 0, y: 0, rotation })
+        assert.ok(center.x + bounds.left * scale >= 2 - 1e-7)
+        assert.ok(center.y + bounds.top * scale >= 2 - 1e-7)
+        assert.ok(center.x + bounds.right * scale <= surface.width - 2 + 1e-7)
+        assert.ok(center.y + bounds.bottom * scale <= surface.height - 2 + 1e-7)
+      }
+    }
   }
 })
 

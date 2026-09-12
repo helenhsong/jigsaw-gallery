@@ -5,13 +5,13 @@ import '@helenhsong/ui/style.css'
 import readme from '../README.md?raw'
 import {
   DEFAULT_ARTWORK, DIFFICULTIES, TABLE_HEIGHT, TABLE_WIDTH,
-  createPieces, groupCount, moveGroup, rotateGroup, scatterPieces, snapNearbyGroups,
+  createPieces, fitPieceCenter, groupCount, moveGroup, rotateGroup, scatterPieces, snapNearbyGroups,
 } from './jigsaw'
 import { loadPuzzleCollection, savePuzzleCollection } from './persistence'
 
 const PUZZLE_IMAGE = import.meta.env.BASE_URL + 'puzzles/01.jpeg'
 const MIN_FLOOR_WIDTH = 560
-const PIECE_GEOMETRY_VERSION = 6
+const PIECE_GEOMETRY_VERSION = 11
 const SCATTER_VERSION = 2
 const PILE_WIDTH = 260
 const PILE_HEIGHT = 176
@@ -42,6 +42,14 @@ function freshPuzzle(puzzle, floorBounds = { width: TABLE_WIDTH, height: TABLE_H
   }
 }
 
+function keepGroupsInsideFloor(positions, pieces, floorBounds) {
+  let bounded = positions
+  for (const group of new Set(Object.values(positions).map((position) => position.group))) {
+    bounded = moveGroup(bounded, pieces, group, 0, 0, floorBounds)
+  }
+  return bounded
+}
+
 function readSavedPuzzles() {
   try {
     const saved = loadPuzzleCollection(window.localStorage, PUZZLES, DIFFICULTIES)
@@ -52,14 +60,15 @@ function readSavedPuzzles() {
         : createPieces(difficulty, progress.artwork, puzzleId)
       const shouldRefreshScatter = progress.scatterVersion !== SCATTER_VERSION
         && groupCount(progress.positions) === progress.pieces.length
+      const migratedPositions = shouldRefreshScatter
+        ? scatterPieces(upgradedPieces, progress.floorBounds, `${puzzleId}-initial-scatter`)
+        : progress.positions
       return [puzzleId, {
         ...progress,
         pieceGeometryVersion: PIECE_GEOMETRY_VERSION,
         scatterVersion: SCATTER_VERSION,
         pieces: upgradedPieces,
-        positions: shouldRefreshScatter
-          ? scatterPieces(upgradedPieces, progress.floorBounds, `${puzzleId}-initial-scatter`)
-          : progress.positions,
+        positions: keepGroupsInsideFloor(migratedPositions, upgradedPieces, progress.floorBounds),
       }]
     }))
   } catch {
@@ -91,9 +100,16 @@ function createPileLayout(progress, offsets = {}) {
     const position = progress.positions[piece.id]
     const offset = offsets[position.group] ?? { x: 0, y: 0 }
     const point = pilePoint(progress, position)
-    const x = point.x + offset.x
-    const y = point.y + offset.y
     const scale = Math.max(0.1, Math.min(0.5, 21 / Math.sqrt(piece.width * piece.height)))
+    const fitted = fitPieceCenter(
+      piece,
+      position.rotation,
+      { x: point.x + offset.x, y: point.y + offset.y },
+      { width: PILE_WIDTH, height: PILE_HEIGHT },
+      scale,
+      2,
+    )
+    const { x, y } = fitted
     return [piece.id, `translate(${x} ${y}) rotate(${position.rotation}) scale(${scale}) translate(${-piece.centerX} ${-piece.centerY})`]
   }))
 }

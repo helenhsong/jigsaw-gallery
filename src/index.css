@@ -7,6 +7,11 @@ body {
   margin: 0;
 }
 
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(39 39 39 / 22%) transparent;
+}
+
 :root[data-ph-open] .puzzle-app {
   display: none;
 }
@@ -61,8 +66,15 @@ body {
 }
 
 .puzzle-app .collection-screen {
+  display: flex;
+  height: calc(100svh - 68px);
   min-height: calc(100svh - 68px);
-  padding: 30px 0 72px;
+  flex-direction: column;
+  padding: 30px 0 0;
+}
+
+.puzzle-app:has(.collection-screen) {
+  padding-bottom: 0;
 }
 
 .puzzle-app .collection-heading {
@@ -86,35 +98,45 @@ body {
 }
 
 .puzzle-app .collection-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 30px 44px;
-  width: min(100%, 1420px);
-  margin: 46px auto 0;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-items: flex-start;
+  gap: clamp(56px, 7vw, 112px);
+  width: calc(100% + 64px);
+  margin: 46px -32px 0;
+  padding: 18px 0 34px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline proximity;
 }
 
 .puzzle-app .puzzle-tile {
   display: grid;
-  min-width: 0;
-  min-height: 260px;
+  flex: 0 0 clamp(420px, 60svh, 650px);
+  min-height: clamp(280px, 40svh, 440px);
   grid-template-rows: 1fr;
   padding: 16px;
   border: 0;
   background: transparent;
   color: var(--ink);
   cursor: default;
+  scroll-snap-align: center;
   text-align: left;
 }
 
 .puzzle-app .puzzle-object {
   display: grid;
-  min-height: 190px;
+  min-height: clamp(280px, 40svh, 440px);
   place-items: center;
 }
 
 .puzzle-app .puzzle-object svg {
   display: block;
-  width: min(122%, 360px);
+  width: auto;
+  max-width: none;
+  height: clamp(280px, 40svh, 440px);
   overflow: visible;
   cursor: default;
   filter: drop-shadow(2px 5px 5px rgb(0 0 0 / 13%));
@@ -482,7 +504,7 @@ body {
 
 @media (max-width: 62rem) {
   .puzzle-app { padding-inline: 24px; padding-bottom: 232px; }
-  .puzzle-app .collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .puzzle-app .collection-grid { width: calc(100% + 48px); margin-inline: -24px; gap: 44px; }
   .puzzle-app .floor-shell { width: 100%; padding: 8px 4px 20px; }
   .puzzle-app .puzzle-floor { height: clamp(460px, calc(100svh - 180px), 640px); }
   .puzzle-app .floor-status { min-width: 0; }
@@ -491,10 +513,10 @@ body {
 @media (max-width: 36rem) {
   .puzzle-app { padding-inline: 16px; padding-bottom: 150px; }
   .puzzle-app .collection-screen { padding-top: 22px; }
-  .puzzle-app .collection-grid { grid-template-columns: 1fr; gap: 18px; margin-top: 28px; }
-  .puzzle-app .puzzle-tile { min-height: 226px; padding-inline: 8px; }
-  .puzzle-app .puzzle-object { min-height: 160px; }
-  .puzzle-app .puzzle-object svg { width: min(108%, 320px); }
+  .puzzle-app .collection-grid { width: calc(100% + 32px); margin-top: 28px; margin-inline: -16px; gap: 28px; padding-block: 12px 26px; }
+  .puzzle-app .puzzle-tile { flex-basis: min(96vw, 500px); min-height: clamp(240px, 38svh, 340px); padding-inline: 0; }
+  .puzzle-app .puzzle-object { min-height: clamp(240px, 38svh, 340px); }
+  .puzzle-app .puzzle-object svg { width: auto; height: clamp(240px, 38svh, 340px); }
   .puzzle-app .game-layout { gap: 12px; }
   .puzzle-app .puzzle-options { gap: 14px; }
   .puzzle-app .puzzle-floor { height: clamp(420px, calc(100svh - 160px), 560px); }

@@ -59,11 +59,13 @@ function edgeSegments(x, y, dx, dy, edge, tabSize) {
   const radius = tabSize * edge.size
   const h = radius * edge.sign
   const knots = [
-    { end: point(center - radius * 0.62, 0) },
-    { c1: point(center - radius * 0.38, 0), c2: point(center - radius * 0.72, h * 0.17), end: point(center - radius * 0.72, h * 0.55) },
-    { c1: point(center - radius * 0.72, h * 1.0), c2: point(center - radius * 0.42, h * 1.34), end: point(center, h * 1.34) },
-    { c1: point(center + radius * 0.42, h * 1.34), c2: point(center + radius * 0.72, h * 1.0), end: point(center + radius * 0.72, h * 0.55) },
-    { c1: point(center + radius * 0.72, h * 0.17), c2: point(center + radius * 0.38, 0), end: point(center + radius * 0.62, 0) },
+    { end: point(center - radius * 0.68, 0) },
+    { c1: point(center - radius * 0.48, 0), c2: point(center - radius * 0.46, h * 0.16), end: point(center - radius * 0.67, h * 0.35) },
+    { c1: point(center - radius * 0.87, h * 0.52), c2: point(center - radius * 1.02, h * 0.62), end: point(center - radius * 1.02, h * 0.82) },
+    { c1: point(center - radius * 1.02, h * 1.28), c2: point(center - radius * 0.58, h * 1.62), end: point(center, h * 1.62) },
+    { c1: point(center + radius * 0.58, h * 1.62), c2: point(center + radius * 1.02, h * 1.28), end: point(center + radius * 1.02, h * 0.82) },
+    { c1: point(center + radius * 1.02, h * 0.62), c2: point(center + radius * 0.87, h * 0.52), end: point(center + radius * 0.67, h * 0.35) },
+    { c1: point(center + radius * 0.46, h * 0.16), c2: point(center + radius * 0.48, 0), end: point(center + radius * 0.68, 0) },
     { end: [x + dx, y + dy] },
   ]
   return knots.map((segment, index) => ({ ...segment, start: index === 0 ? [x, y] : knots[index - 1].end }))
@@ -141,6 +143,21 @@ export function pieceBounds(piece, position) {
     right: position.x + Math.max(...corners.map((p) => p.x)) + 3,
     top: position.y + Math.min(...corners.map((p) => p.y)) - 3,
     bottom: position.y + Math.max(...corners.map((p) => p.y)) + 3,
+  }
+}
+
+export function fitPieceCenter(piece, rotation, center, surface, scale = 1, padding = 0) {
+  const bounds = pieceBounds(piece, { x: 0, y: 0, rotation })
+  const minX = padding - bounds.left * scale
+  const maxX = surface.width - padding - bounds.right * scale
+  const minY = padding - bounds.top * scale
+  const maxY = surface.height - padding - bounds.bottom * scale
+  const fit = (value, minimum, maximum) => (
+    minimum > maximum ? (minimum + maximum) / 2 : Math.max(minimum, Math.min(maximum, value))
+  )
+  return {
+    x: fit(center.x, minX, maxX),
+    y: fit(center.y, minY, maxY),
   }
 }
 
