@@ -1,1 +1,1 @@
-# Canvas Jigsaw
+# Jigsaw Gallery

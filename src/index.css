@@ -12,6 +12,7 @@ body {
 }
 
 .site-shell {
+  --background: transparent;
   position: relative;
   isolation: isolate;
   min-height: 100svh;

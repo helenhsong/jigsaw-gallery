@@ -709,7 +709,7 @@ function App() {
         {!activePuzzle ? (
           <section className="collection-screen" aria-labelledby="collection-title">
             <div className="collection-heading">
-              <h1 id="collection-title">Puzzle collection</h1>
+              <h1 id="collection-title">Jigsaw Gallery</h1>
               <p>{completedCount} of {PUZZLES.length} assembled</p>
             </div>
             <div className="collection-grid">
