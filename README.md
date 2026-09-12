@@ -1,1 +1,1 @@
-# Sudoku
+# Canvas Jigsaw
