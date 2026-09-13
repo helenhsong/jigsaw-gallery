@@ -19,13 +19,19 @@ const LANDING_SPREAD = 1.18
 const INSTRUCTIONS = 'Drag to move · Double-click or press R to rotate'
 const TIMELINE_LINE_COUNT = 40
 const TIMELINE_PROXIMITY = 48
+const PLACEHOLDER_ARTWORK = {
+  title: 'Untitled (Orange Glasses)',
+  artist: 'Artist unknown',
+  year: 'Undated',
+  medium: 'Digital image',
+}
 const PUZZLES = [
-  { id: 'puzzle-01', number: '01', level: 'Easy', difficultyKey: 'easy', imageUrl: PUZZLE_IMAGE },
-  { id: 'puzzle-02', number: '02', level: 'Easy', difficultyKey: 'easy', imageUrl: PUZZLE_IMAGE },
-  { id: 'puzzle-03', number: '03', level: 'Medium', difficultyKey: 'medium', imageUrl: PUZZLE_IMAGE },
-  { id: 'puzzle-04', number: '04', level: 'Medium', difficultyKey: 'medium', imageUrl: PUZZLE_IMAGE },
-  { id: 'puzzle-05', number: '05', level: 'Hard', difficultyKey: 'hard', imageUrl: PUZZLE_IMAGE },
-  { id: 'puzzle-06', number: '06', level: 'Hard', difficultyKey: 'hard', imageUrl: PUZZLE_IMAGE },
+  { id: 'puzzle-01', number: '01', level: 'Easy', difficultyKey: 'easy', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-02', number: '02', level: 'Easy', difficultyKey: 'easy', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-03', number: '03', level: 'Medium', difficultyKey: 'medium', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-04', number: '04', level: 'Medium', difficultyKey: 'medium', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-05', number: '05', level: 'Hard', difficultyKey: 'hard', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-06', number: '06', level: 'Hard', difficultyKey: 'hard', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
 ]
 function freshPuzzle(puzzle, floorBounds = { width: TABLE_WIDTH, height: TABLE_HEIGHT }) {
   const difficulty = DIFFICULTIES.find((option) => option.key === puzzle.difficultyKey)
@@ -338,7 +344,7 @@ function PuzzleTile({ puzzle, progress, cursorWindRef, onOpen, onScatter }) {
       className={`puzzle-tile${complete ? ' is-complete' : ''}`}
       role="button"
       tabIndex="0"
-      aria-label={`Open puzzle ${puzzle.number}, ${puzzle.level}${complete ? ', assembled' : ''}`}
+      aria-label={`Open ${puzzle.artwork.title}, puzzle ${puzzle.number}, ${puzzle.level}${complete ? ', assembled' : ''}`}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
@@ -367,11 +373,16 @@ function PuzzleTile({ puzzle, progress, cursorWindRef, onOpen, onScatter }) {
           </svg>
         )}
       </span>
+      <div className="art-info-card">
+        <p className="art-info-artist">{puzzle.artwork.artist}</p>
+        <p className="art-info-title"><cite>{puzzle.artwork.title}</cite>, {puzzle.artwork.year}</p>
+        <p className="art-info-medium">{puzzle.artwork.medium}</p>
+      </div>
     </div>
   )
 }
 
-function PuzzleTimeline({ activeIndex, puzzles, progress, progressByPuzzle, onScrub }) {
+function LineMinimap({ activeIndex, puzzles, progress, progressByPuzzle, onScrub }) {
   const [pointer, setPointer] = useState(null)
   const activePuzzle = puzzles[activeIndex]
   const assembled = isComplete(progressByPuzzle[activePuzzle.id])
@@ -382,33 +393,30 @@ function PuzzleTimeline({ activeIndex, puzzles, progress, progressByPuzzle, onSc
   }
 
   return (
-    <nav className="collection-timeline" aria-label="Choose a puzzle">
-      <div className="timeline-rail" onPointerMove={trackPointer} onPointerLeave={() => setPointer(null)}>
-        <div className="timeline-waveform" aria-hidden="true">
+    <nav className="collection-minimap" aria-label="Choose a puzzle">
+      <div className="minimap-rail" onPointerMove={trackPointer} onPointerLeave={() => setPointer(null)}>
+        <div className="minimap-lines" aria-hidden="true">
           {Array.from({ length: TIMELINE_LINE_COUNT }, (_, index) => {
-            const lineX = index / (TIMELINE_LINE_COUNT - 1) * (pointer?.width ?? 352)
-            const distance = pointer === null ? TIMELINE_PROXIMITY : Math.abs(pointer.x - lineX)
+            const railWidth = pointer?.width ?? 220
+            const lineX = index / (TIMELINE_LINE_COUNT - 1) * railWidth
+            const interactionX = pointer?.x ?? progress * railWidth
+            const distance = Math.abs(interactionX - lineX)
             const proximity = Math.max(0, 1 - distance / TIMELINE_PROXIMITY)
-            const scale = 1 + 2.8 * proximity * proximity
+            const scale = 1 + 20 * proximity * proximity
             const major = puzzles.some((_, puzzleIndex) => (
               Math.round(puzzleIndex / (puzzles.length - 1) * (TIMELINE_LINE_COUNT - 1)) === index
             ))
             return (
               <span
-                className={`timeline-tick${major ? ' is-major' : ''}`}
+                className={`minimap-line${major ? ' is-major' : ''}`}
                 key={index}
                 style={{ '--line-scale': scale }}
               />
             )
           })}
         </div>
-        <span
-          className="timeline-playhead"
-          aria-hidden="true"
-          style={{ '--timeline-position': `${progress * 100}%` }}
-        />
         <input
-          className="timeline-range"
+          className="minimap-range"
           type="range"
           min="0"
           max="1"
@@ -426,6 +434,7 @@ function PuzzleTimeline({ activeIndex, puzzles, progress, progressByPuzzle, onSc
 function App() {
   const tableRef = useRef(null)
   const collectionRef = useRef(null)
+  const galleryWheelRef = useRef({ frame: null, target: 0 })
   const dragRef = useRef(null)
   const tapRef = useRef(null)
   const pointerTypeRef = useRef(null)
@@ -475,6 +484,67 @@ function App() {
     return () => window.removeEventListener('pointermove', trackCursorWind, true)
   }, [])
 
+  useEffect(() => {
+    if (activePuzzleId) return undefined
+    const gallery = collectionRef.current
+    if (!gallery) return undefined
+
+    const wheelState = galleryWheelRef.current
+    wheelState.target = gallery.scrollLeft
+
+    const animateWheel = () => {
+      const distance = wheelState.target - gallery.scrollLeft
+      if (Math.abs(distance) < 0.35) {
+        gallery.scrollLeft = wheelState.target
+        wheelState.frame = null
+        return
+      }
+      gallery.scrollLeft += distance * 0.28
+      wheelState.frame = window.requestAnimationFrame(animateWheel)
+    }
+
+    const scrollGallery = (event) => {
+      if (document.documentElement.hasAttribute('data-ph-open') || event.ctrlKey) return
+      const maximumScroll = Math.max(0, gallery.scrollWidth - gallery.clientWidth)
+      if (maximumScroll === 0) return
+
+      const dominantDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        ? event.deltaX
+        : event.deltaY
+      if (dominantDelta === 0) return
+
+      event.preventDefault()
+      const multiplier = event.deltaMode === 1
+        ? 16
+        : event.deltaMode === 2
+          ? window.innerHeight
+          : 1
+      if (wheelState.frame === null) wheelState.target = gallery.scrollLeft
+      wheelState.target = Math.max(
+        0,
+        Math.min(maximumScroll, wheelState.target + dominantDelta * multiplier),
+      )
+      if (wheelState.frame === null) {
+        wheelState.frame = window.requestAnimationFrame(animateWheel)
+      }
+    }
+
+    const keepTargetInBounds = () => {
+      const maximumScroll = Math.max(0, gallery.scrollWidth - gallery.clientWidth)
+      wheelState.target = Math.max(0, Math.min(maximumScroll, gallery.scrollLeft))
+    }
+
+    window.addEventListener('wheel', scrollGallery, { passive: false })
+    window.addEventListener('resize', keepTargetInBounds)
+
+    return () => {
+      window.removeEventListener('wheel', scrollGallery)
+      window.removeEventListener('resize', keepTargetInBounds)
+      if (wheelState.frame !== null) window.cancelAnimationFrame(wheelState.frame)
+      wheelState.frame = null
+    }
+  }, [activePuzzleId])
+
   const activePuzzle = PUZZLES.find((puzzle) => puzzle.id === activePuzzleId)
   const difficulty = puzzleDifficultyRef.current
   const remainingGroups = groupCount(positions)
@@ -484,9 +554,10 @@ function App() {
   function syncTimelineToScroll(event) {
     const gallery = event.currentTarget
     const maximumScroll = gallery.scrollWidth - gallery.clientWidth
-    setGalleryProgress(maximumScroll > 0
+    const progress = maximumScroll > 0
       ? Math.max(0, Math.min(1, gallery.scrollLeft / maximumScroll))
-      : 0)
+      : 0
+    setGalleryProgress(progress)
     if (gallery.scrollLeft <= 1) {
       setVisiblePuzzleIndex(0)
       return
@@ -835,6 +906,13 @@ function App() {
       <main className="puzzle-app">
         {!activePuzzle ? (
           <section className="collection-screen" aria-label="Puzzle gallery">
+            <LineMinimap
+              activeIndex={visiblePuzzleIndex}
+              puzzles={PUZZLES}
+              progress={galleryProgress}
+              progressByPuzzle={savedPuzzles}
+              onScrub={scrubPuzzleGallery}
+            />
             <div className="collection-grid" ref={collectionRef} onScroll={syncTimelineToScroll}>
               {PUZZLES.map((puzzle) => (
                 <PuzzleTile
@@ -847,13 +925,6 @@ function App() {
                 />
               ))}
             </div>
-            <PuzzleTimeline
-              activeIndex={visiblePuzzleIndex}
-              puzzles={PUZZLES}
-              progress={galleryProgress}
-              progressByPuzzle={savedPuzzles}
-              onScrub={scrubPuzzleGallery}
-            />
           </section>
         ) : (
           <section className="game" aria-labelledby="game-title">

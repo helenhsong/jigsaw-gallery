@@ -12,6 +12,14 @@ html {
   scrollbar-color: rgb(39 39 39 / 22%) transparent;
 }
 
+html:not([data-ph-open]):has(.collection-screen) {
+  scrollbar-width: none;
+}
+
+html:not([data-ph-open]):has(.collection-screen)::-webkit-scrollbar {
+  width: 0;
+}
+
 :root[data-ph-open] .puzzle-app {
   display: none;
 }
@@ -66,21 +74,21 @@ html {
 }
 
 .puzzle-app .collection-screen {
-  display: flex;
-  height: calc(100svh - 68px);
-  min-height: calc(100svh - 68px);
-  flex-direction: column;
+  height: calc(100svh - 66px);
+  min-height: calc(100svh - 66px);
   padding: 0;
 }
 
 .puzzle-app:has(.collection-screen) {
+  z-index: 11;
   padding-bottom: 0;
 }
 
 .puzzle-app .collection-grid {
+  position: sticky;
+  top: 66px;
   display: flex;
-  min-height: 0;
-  flex: 1 1 auto;
+  height: calc(100svh - 66px);
   align-items: center;
   gap: clamp(56px, 7vw, 112px);
   width: calc(100% + 64px);
@@ -89,74 +97,57 @@ html {
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-inline: contain;
-  scroll-snap-type: inline proximity;
+  scrollbar-width: none;
 }
 
-.puzzle-app .collection-timeline {
+.puzzle-app .collection-grid::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.puzzle-app .collection-minimap {
+  position: fixed;
+  top: 0;
+  left: 50%;
   display: grid;
-  flex: 0 0 auto;
+  width: clamp(108px, 20vw, 220px);
+  height: 66px;
   place-items: center;
-  padding: 0 0 16px;
+  padding: 0;
+  transform: translateX(-50%);
 }
 
-.puzzle-app .timeline-rail {
+.puzzle-app .minimap-rail {
   position: relative;
-  width: min(352px, calc(100vw - 64px));
-  height: 92px;
+  width: 100%;
+  height: 40px;
 }
 
-.puzzle-app .timeline-waveform {
+.puzzle-app .minimap-lines {
   position: absolute;
-  inset: 7px 0 9px;
+  inset: 4px 0 5px;
   display: grid;
   align-items: center;
   grid-template-columns: repeat(40, 1fr);
   pointer-events: none;
 }
 
-.puzzle-app .timeline-tick {
+.puzzle-app .minimap-line {
   width: 1px;
-  height: 24px;
+  height: 14px;
   justify-self: center;
   background: rgb(39 39 39 / 46%);
-  transform: scaleY(var(--line-scale));
+  transform: scaleX(var(--line-scale));
   transform-origin: center;
   transition: transform 120ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-.puzzle-app .timeline-tick.is-major {
-  width: 1.5px;
-  height: 32px;
+.puzzle-app .minimap-line.is-major {
   background: var(--ink);
 }
 
-.puzzle-app .timeline-playhead {
-  position: absolute;
-  z-index: 2;
-  top: 8px;
-  bottom: 0;
-  left: var(--timeline-position);
-  width: 1px;
-  background: #d9561f;
-  pointer-events: none;
-  transform: translateX(-0.5px);
-  transition: left 220ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.puzzle-app .timeline-playhead::before {
-  position: absolute;
-  top: -7px;
-  left: 50%;
-  width: 0;
-  height: 0;
-  border-top: 7px solid #d9561f;
-  border-right: 4px solid transparent;
-  border-left: 4px solid transparent;
-  content: '';
-  transform: translateX(-50%);
-}
-
-.puzzle-app .timeline-range {
+.puzzle-app .minimap-range {
   position: absolute;
   z-index: 3;
   inset: 0;
@@ -170,31 +161,31 @@ html {
   touch-action: pan-y;
 }
 
-.puzzle-app .timeline-range::-webkit-slider-runnable-track {
+.puzzle-app .minimap-range::-webkit-slider-runnable-track {
   height: 100%;
   background: transparent;
 }
 
-.puzzle-app .timeline-range::-webkit-slider-thumb {
+.puzzle-app .minimap-range::-webkit-slider-thumb {
   width: 18px;
-  height: 92px;
+  height: 40px;
   appearance: none;
   background: transparent;
 }
 
-.puzzle-app .timeline-range::-moz-range-track {
+.puzzle-app .minimap-range::-moz-range-track {
   height: 100%;
   background: transparent;
 }
 
-.puzzle-app .timeline-range::-moz-range-thumb {
+.puzzle-app .minimap-range::-moz-range-thumb {
   width: 18px;
-  height: 92px;
+  height: 40px;
   border: 0;
   background: transparent;
 }
 
-.puzzle-app .timeline-range:focus-visible {
+.puzzle-app .minimap-range:focus-visible {
   outline: 1px solid rgb(39 39 39 / 46%);
   outline-offset: 5px;
 }
@@ -203,7 +194,8 @@ html {
   display: grid;
   flex: 0 0 clamp(420px, 60svh, 650px);
   min-height: clamp(280px, 40svh, 440px);
-  grid-template-rows: 1fr;
+  grid-template-rows: 1fr auto;
+  gap: clamp(12px, 2svh, 20px);
   padding: 16px;
   border: 0;
   background: transparent;
@@ -211,6 +203,42 @@ html {
   cursor: default;
   scroll-snap-align: center;
   text-align: left;
+}
+
+.puzzle-app .art-info-card {
+  position: relative;
+  z-index: 2;
+  width: 178px;
+  justify-self: center;
+  padding: 11px 12px 10px;
+  border: 1px solid rgb(39 39 39 / 14%);
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 5%), 0 4px 12px rgb(0 0 0 / 7%);
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.puzzle-app .art-info-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.puzzle-app .art-info-artist {
+  font-weight: 500;
+}
+
+.puzzle-app .art-info-card .art-info-title {
+  margin-top: 5px;
+}
+
+.puzzle-app .art-info-title cite {
+  font-style: italic;
+}
+
+.puzzle-app .art-info-card .art-info-medium {
+  margin-top: 4px;
+  color: var(--muted);
 }
 
 .puzzle-app .puzzle-object {
@@ -600,12 +628,9 @@ html {
 @media (max-width: 36rem) {
   .puzzle-app { padding-inline: 16px; padding-bottom: 150px; }
   .puzzle-app .collection-grid { width: calc(100% + 32px); margin-inline: -16px; gap: 28px; padding-block: 12px 20px; }
-  .puzzle-app .collection-timeline { padding-bottom: 12px; }
-  .puzzle-app .timeline-rail { width: min(352px, calc(100vw - 32px)); height: 82px; }
-  .puzzle-app .timeline-waveform { inset-block: 5px 8px; }
-  .puzzle-app .timeline-range::-webkit-slider-thumb { height: 82px; }
-  .puzzle-app .timeline-range::-moz-range-thumb { height: 82px; }
+  .puzzle-app .collection-minimap { width: 108px; }
   .puzzle-app .puzzle-tile { flex-basis: min(96vw, 500px); min-height: clamp(240px, 38svh, 340px); padding-inline: 0; }
+  .puzzle-app .art-info-card { width: 164px; }
   .puzzle-app .puzzle-object { min-height: clamp(240px, 38svh, 340px); }
   .puzzle-app .puzzle-object svg { width: auto; height: clamp(240px, 38svh, 340px); }
   .puzzle-app .game-layout { gap: 12px; }
