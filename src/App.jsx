@@ -369,8 +369,35 @@ function PuzzleTile({ puzzle, progress, cursorWindRef, onOpen, onScatter }) {
   )
 }
 
+function PuzzleTimeline({ activeIndex, puzzles, progressByPuzzle, onSelect }) {
+  return (
+    <nav className="collection-timeline" aria-label="Choose a puzzle">
+      <div className="timeline-track">
+        {puzzles.map((puzzle, index) => {
+          const current = index === activeIndex
+          const assembled = isComplete(progressByPuzzle[puzzle.id])
+          return (
+            <button
+              type="button"
+              className={`timeline-step${current ? ' is-active' : ''}${assembled ? ' is-complete' : ''}`}
+              aria-current={current ? 'step' : undefined}
+              aria-label={`Puzzle ${puzzle.number}, ${puzzle.level}${assembled ? ', assembled' : ''}`}
+              key={puzzle.id}
+              onClick={() => onSelect(index)}
+            >
+              <span className="timeline-dot" aria-hidden="true" />
+              <span className="timeline-number" aria-hidden="true">{puzzle.number}</span>
+            </button>
+          )
+        })}
+      </div>
+    </nav>
+  )
+}
+
 function App() {
   const tableRef = useRef(null)
+  const collectionRef = useRef(null)
   const dragRef = useRef(null)
   const tapRef = useRef(null)
   const pointerTypeRef = useRef(null)
@@ -383,6 +410,7 @@ function App() {
   const floorBoundsRef = useRef(BOOTSTRAP_PROGRESS.floorBounds)
   const positionsRef = useRef(BOOTSTRAP_PROGRESS.positions)
   const [activePuzzleId, setActivePuzzleId] = useState(null)
+  const [visiblePuzzleIndex, setVisiblePuzzleIndex] = useState(0)
   const [savedPuzzles, setSavedPuzzles] = useState(INITIAL_PUZZLES)
   const [artwork, setArtwork] = useState(BOOTSTRAP_PROGRESS.artwork)
   const [floorBounds, setFloorBounds] = useState(BOOTSTRAP_PROGRESS.floorBounds)
@@ -423,7 +451,44 @@ function App() {
   const remainingGroups = groupCount(positions)
   const complete = remainingGroups === 1
   const selectedGroup = selectedPieceId === null ? null : positions[selectedPieceId]?.group
-  const completedCount = PUZZLES.filter((puzzle) => isComplete(savedPuzzles[puzzle.id])).length
+
+  function syncTimelineToScroll(event) {
+    const gallery = event.currentTarget
+    const maximumScroll = gallery.scrollWidth - gallery.clientWidth
+    if (gallery.scrollLeft <= 1) {
+      setVisiblePuzzleIndex(0)
+      return
+    }
+    if (gallery.scrollLeft >= maximumScroll - 1) {
+      setVisiblePuzzleIndex(PUZZLES.length - 1)
+      return
+    }
+    const galleryCenter = gallery.scrollLeft + gallery.clientWidth / 2
+    let closestIndex = 0
+    let closestDistance = Number.POSITIVE_INFINITY
+    for (const [index, tile] of [...gallery.children].entries()) {
+      const tileCenter = tile.offsetLeft + tile.offsetWidth / 2
+      const distance = Math.abs(tileCenter - galleryCenter)
+      if (distance < closestDistance) {
+        closestDistance = distance
+        closestIndex = index
+      }
+    }
+    setVisiblePuzzleIndex((current) => current === closestIndex ? current : closestIndex)
+  }
+
+  function showPuzzleInGallery(index, preferredBehavior) {
+    const gallery = collectionRef.current
+    const tile = gallery?.children[index]
+    if (!gallery || !tile) return
+    const left = tile.offsetLeft - (gallery.clientWidth - tile.offsetWidth) / 2
+    gallery.scrollTo({
+      left,
+      behavior: preferredBehavior
+        ?? (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'),
+    })
+    setVisiblePuzzleIndex(index)
+  }
 
   function commitPositions(nextPositions) {
     positionsRef.current = nextPositions
@@ -484,13 +549,16 @@ function App() {
     setIsDropping(false)
     setImageError(false)
     setFeedback(isComplete(progress) ? 'All together. Nicely done.' : INSTRUCTIONS)
+    setVisiblePuzzleIndex(PUZZLES.findIndex((option) => option.id === puzzle.id))
     setActivePuzzleId(puzzle.id)
   }
 
   function leavePuzzle() {
+    const galleryIndex = PUZZLES.findIndex((puzzle) => puzzle.id === activePuzzleId)
     storePuzzle(activePuzzleId)
     setActivePuzzleId(null)
     setSelectedPieceId(null)
+    window.requestAnimationFrame(() => showPuzzleInGallery(Math.max(0, galleryIndex), 'auto'))
   }
 
   function resetPuzzle(nextArtwork = artwork, animate = false) {
@@ -723,12 +791,8 @@ function App() {
       <ProjectHeader readme={readme} />
       <main className="puzzle-app">
         {!activePuzzle ? (
-          <section className="collection-screen" aria-labelledby="collection-title">
-            <div className="collection-heading">
-              <h1 id="collection-title">Jigsaw Gallery</h1>
-              <p>{completedCount} of {PUZZLES.length} assembled</p>
-            </div>
-            <div className="collection-grid">
+          <section className="collection-screen" aria-label="Puzzle gallery">
+            <div className="collection-grid" ref={collectionRef} onScroll={syncTimelineToScroll}>
               {PUZZLES.map((puzzle) => (
                 <PuzzleTile
                   key={puzzle.id}
@@ -740,6 +804,12 @@ function App() {
                 />
               ))}
             </div>
+            <PuzzleTimeline
+              activeIndex={visiblePuzzleIndex}
+              puzzles={PUZZLES}
+              progressByPuzzle={savedPuzzles}
+              onSelect={showPuzzleInGallery}
+            />
           </section>
         ) : (
           <section className="game" aria-labelledby="game-title">
