@@ -17,6 +17,8 @@ const PILE_WIDTH = 260
 const PILE_HEIGHT = 176
 const LANDING_SPREAD = 1.18
 const INSTRUCTIONS = 'Drag to move · Double-click or press R to rotate'
+const TIMELINE_LINE_COUNT = 40
+const TIMELINE_PROXIMITY = 48
 const PUZZLES = [
   { id: 'puzzle-01', number: '01', level: 'Easy', difficultyKey: 'easy', imageUrl: PUZZLE_IMAGE },
   { id: 'puzzle-02', number: '02', level: 'Easy', difficultyKey: 'easy', imageUrl: PUZZLE_IMAGE },
@@ -369,27 +371,53 @@ function PuzzleTile({ puzzle, progress, cursorWindRef, onOpen, onScatter }) {
   )
 }
 
-function PuzzleTimeline({ activeIndex, puzzles, progressByPuzzle, onSelect }) {
+function PuzzleTimeline({ activeIndex, puzzles, progress, progressByPuzzle, onScrub }) {
+  const [pointer, setPointer] = useState(null)
+  const activePuzzle = puzzles[activeIndex]
+  const assembled = isComplete(progressByPuzzle[activePuzzle.id])
+
+  function trackPointer(event) {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    setPointer({ x: event.clientX - bounds.left, width: bounds.width })
+  }
+
   return (
     <nav className="collection-timeline" aria-label="Choose a puzzle">
-      <div className="timeline-track">
-        {puzzles.map((puzzle, index) => {
-          const current = index === activeIndex
-          const assembled = isComplete(progressByPuzzle[puzzle.id])
-          return (
-            <button
-              type="button"
-              className={`timeline-step${current ? ' is-active' : ''}${assembled ? ' is-complete' : ''}`}
-              aria-current={current ? 'step' : undefined}
-              aria-label={`Puzzle ${puzzle.number}, ${puzzle.level}${assembled ? ', assembled' : ''}`}
-              key={puzzle.id}
-              onClick={() => onSelect(index)}
-            >
-              <span className="timeline-dot" aria-hidden="true" />
-              <span className="timeline-number" aria-hidden="true">{puzzle.number}</span>
-            </button>
-          )
-        })}
+      <div className="timeline-rail" onPointerMove={trackPointer} onPointerLeave={() => setPointer(null)}>
+        <div className="timeline-waveform" aria-hidden="true">
+          {Array.from({ length: TIMELINE_LINE_COUNT }, (_, index) => {
+            const lineX = index / (TIMELINE_LINE_COUNT - 1) * (pointer?.width ?? 352)
+            const distance = pointer === null ? TIMELINE_PROXIMITY : Math.abs(pointer.x - lineX)
+            const proximity = Math.max(0, 1 - distance / TIMELINE_PROXIMITY)
+            const scale = 1 + 2.8 * proximity * proximity
+            const major = puzzles.some((_, puzzleIndex) => (
+              Math.round(puzzleIndex / (puzzles.length - 1) * (TIMELINE_LINE_COUNT - 1)) === index
+            ))
+            return (
+              <span
+                className={`timeline-tick${major ? ' is-major' : ''}`}
+                key={index}
+                style={{ '--line-scale': scale }}
+              />
+            )
+          })}
+        </div>
+        <span
+          className="timeline-playhead"
+          aria-hidden="true"
+          style={{ '--timeline-position': `${progress * 100}%` }}
+        />
+        <input
+          className="timeline-range"
+          type="range"
+          min="0"
+          max="1"
+          step={1 / (puzzles.length - 1)}
+          value={progress}
+          aria-label="Current puzzle"
+          aria-valuetext={`Puzzle ${activePuzzle.number}, ${activePuzzle.level}${assembled ? ', assembled' : ''}`}
+          onChange={(event) => onScrub(Number(event.target.value))}
+        />
       </div>
     </nav>
   )
@@ -411,6 +439,7 @@ function App() {
   const positionsRef = useRef(BOOTSTRAP_PROGRESS.positions)
   const [activePuzzleId, setActivePuzzleId] = useState(null)
   const [visiblePuzzleIndex, setVisiblePuzzleIndex] = useState(0)
+  const [galleryProgress, setGalleryProgress] = useState(0)
   const [savedPuzzles, setSavedPuzzles] = useState(INITIAL_PUZZLES)
   const [artwork, setArtwork] = useState(BOOTSTRAP_PROGRESS.artwork)
   const [floorBounds, setFloorBounds] = useState(BOOTSTRAP_PROGRESS.floorBounds)
@@ -455,6 +484,9 @@ function App() {
   function syncTimelineToScroll(event) {
     const gallery = event.currentTarget
     const maximumScroll = gallery.scrollWidth - gallery.clientWidth
+    setGalleryProgress(maximumScroll > 0
+      ? Math.max(0, Math.min(1, gallery.scrollLeft / maximumScroll))
+      : 0)
     if (gallery.scrollLeft <= 1) {
       setVisiblePuzzleIndex(0)
       return
@@ -482,12 +514,23 @@ function App() {
     const tile = gallery?.children[index]
     if (!gallery || !tile) return
     const left = tile.offsetLeft - (gallery.clientWidth - tile.offsetWidth) / 2
+    const maximumScroll = gallery.scrollWidth - gallery.clientWidth
+    const boundedLeft = Math.max(0, Math.min(maximumScroll, left))
     gallery.scrollTo({
-      left,
+      left: boundedLeft,
       behavior: preferredBehavior
         ?? (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'),
     })
+    setGalleryProgress(maximumScroll > 0 ? boundedLeft / maximumScroll : 0)
     setVisiblePuzzleIndex(index)
+  }
+
+  function scrubPuzzleGallery(progress) {
+    const gallery = collectionRef.current
+    if (!gallery) return
+    const maximumScroll = gallery.scrollWidth - gallery.clientWidth
+    gallery.scrollTo({ left: progress * maximumScroll, behavior: 'auto' })
+    setGalleryProgress(progress)
   }
 
   function commitPositions(nextPositions) {
@@ -807,8 +850,9 @@ function App() {
             <PuzzleTimeline
               activeIndex={visiblePuzzleIndex}
               puzzles={PUZZLES}
+              progress={galleryProgress}
               progressByPuzzle={savedPuzzles}
-              onSelect={showPuzzleInGallery}
+              onScrub={scrubPuzzleGallery}
             />
           </section>
         ) : (

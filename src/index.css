@@ -96,85 +96,107 @@ html {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  padding: 10px 0 22px;
+  padding: 0 0 16px;
 }
 
-.puzzle-app .timeline-track {
+.puzzle-app .timeline-rail {
   position: relative;
-  display: grid;
-  width: min(560px, calc(100vw - 64px));
-  grid-template-columns: repeat(6, minmax(44px, 1fr));
+  width: min(352px, calc(100vw - 64px));
+  height: 92px;
 }
 
-.puzzle-app .timeline-track::before {
+.puzzle-app .timeline-waveform {
   position: absolute;
-  top: 5px;
-  right: calc(100% / 12);
-  left: calc(100% / 12);
-  height: 1px;
-  background: rgb(39 39 39 / 18%);
-  content: '';
+  inset: 7px 0 9px;
+  display: grid;
+  align-items: center;
+  grid-template-columns: repeat(40, 1fr);
+  pointer-events: none;
 }
 
-.puzzle-app .timeline-step {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  min-width: 44px;
-  grid-template-rows: 11px auto;
-  gap: 7px;
-  place-items: center;
-  padding: 0;
+.puzzle-app .timeline-tick {
+  width: 1px;
+  height: 24px;
+  justify-self: center;
+  background: rgb(39 39 39 / 46%);
+  transform: scaleY(var(--line-scale));
+  transform-origin: center;
+  transition: transform 120ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.puzzle-app .timeline-tick.is-major {
+  width: 1.5px;
+  height: 32px;
+  background: var(--ink);
+}
+
+.puzzle-app .timeline-playhead {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  bottom: 0;
+  left: var(--timeline-position);
+  width: 1px;
+  background: #d9561f;
+  pointer-events: none;
+  transform: translateX(-0.5px);
+  transition: left 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.puzzle-app .timeline-playhead::before {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-top: 7px solid #d9561f;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.puzzle-app .timeline-range {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  appearance: none;
   border: 0;
   background: transparent;
-  color: var(--muted);
-  cursor: pointer;
+  cursor: ew-resize;
+  touch-action: pan-y;
 }
 
-.puzzle-app .timeline-dot {
-  display: block;
-  width: 7px;
-  height: 7px;
-  border: 1px solid rgb(39 39 39 / 40%);
-  border-radius: 50%;
-  background: #f4f4f4;
-  transition: width 160ms ease, height 160ms ease, border-color 160ms ease, background 160ms ease;
+.puzzle-app .timeline-range::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
 }
 
-.puzzle-app .timeline-number {
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  transition: color 160ms ease;
+.puzzle-app .timeline-range::-webkit-slider-thumb {
+  width: 18px;
+  height: 92px;
+  appearance: none;
+  background: transparent;
 }
 
-.puzzle-app .timeline-step.is-complete .timeline-dot {
-  border-color: var(--ink);
-  background: var(--ink);
+.puzzle-app .timeline-range::-moz-range-track {
+  height: 100%;
+  background: transparent;
 }
 
-.puzzle-app .timeline-step.is-active {
-  color: var(--ink);
+.puzzle-app .timeline-range::-moz-range-thumb {
+  width: 18px;
+  height: 92px;
+  border: 0;
+  background: transparent;
 }
 
-.puzzle-app .timeline-step.is-active .timeline-dot {
-  width: 11px;
-  height: 11px;
-  border-color: var(--ink);
-  background: var(--ink);
-}
-
-.puzzle-app .timeline-step:hover {
-  color: var(--ink);
-}
-
-.puzzle-app .timeline-step:focus-visible {
-  outline: none;
-}
-
-.puzzle-app .timeline-step:focus-visible .timeline-dot {
-  outline: 1px solid var(--ink);
-  outline-offset: 4px;
+.puzzle-app .timeline-range:focus-visible {
+  outline: 1px solid rgb(39 39 39 / 46%);
+  outline-offset: 5px;
 }
 
 .puzzle-app .puzzle-tile {
@@ -578,8 +600,11 @@ html {
 @media (max-width: 36rem) {
   .puzzle-app { padding-inline: 16px; padding-bottom: 150px; }
   .puzzle-app .collection-grid { width: calc(100% + 32px); margin-inline: -16px; gap: 28px; padding-block: 12px 20px; }
-  .puzzle-app .collection-timeline { padding-bottom: 18px; }
-  .puzzle-app .timeline-track { width: calc(100vw - 24px); }
+  .puzzle-app .collection-timeline { padding-bottom: 12px; }
+  .puzzle-app .timeline-rail { width: min(352px, calc(100vw - 32px)); height: 82px; }
+  .puzzle-app .timeline-waveform { inset-block: 5px 8px; }
+  .puzzle-app .timeline-range::-webkit-slider-thumb { height: 82px; }
+  .puzzle-app .timeline-range::-moz-range-thumb { height: 82px; }
   .puzzle-app .puzzle-tile { flex-basis: min(96vw, 500px); min-height: clamp(240px, 38svh, 340px); padding-inline: 0; }
   .puzzle-app .puzzle-object { min-height: clamp(240px, 38svh, 340px); }
   .puzzle-app .puzzle-object svg { width: auto; height: clamp(240px, 38svh, 340px); }
