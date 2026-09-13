@@ -10,11 +10,12 @@ import {
 import { loadPuzzleCollection, savePuzzleCollection } from './persistence'
 
 const PUZZLE_IMAGE = import.meta.env.BASE_URL + 'puzzles/01.jpeg'
+const RENAISSANCE_FRAME_IMAGE = import.meta.env.BASE_URL + 'frames/renaissance-frame-rose.png'
 const MIN_FLOOR_WIDTH = 560
 const PIECE_GEOMETRY_VERSION = 11
 const SCATTER_VERSION = 2
-const PILE_WIDTH = 260
-const PILE_HEIGHT = 176
+const PILE_WIDTH = 194
+const PILE_HEIGHT = 262
 const LANDING_SPREAD = 1.18
 const INSTRUCTIONS = 'Drag to move · Double-click or press R to rotate'
 const TIMELINE_LINE_COUNT = 40
@@ -352,26 +353,29 @@ function PuzzleTile({ puzzle, progress, cursorWindRef, onOpen, onScatter }) {
         }
       }}
     >
-      <span className="puzzle-object" aria-hidden="true">
-        {complete ? (
-          <span className="exhibit-frame" onClick={openWithScatter}>
-            <img src={puzzle.imageUrl} alt="" />
+      <span className="puzzle-object" aria-hidden="true" onClick={openWithScatter}>
+        <span className={`renaissance-frame${complete ? ' exhibit-frame' : ''}`}>
+          <span className="renaissance-frame-opening">
+            {complete ? (
+              <img className="framed-artwork" src={puzzle.imageUrl} alt="" />
+            ) : (
+              <svg viewBox={`0 0 ${PILE_WIDTH} ${PILE_HEIGHT}`} onPointerMove={pushPieces} onPointerLeave={commitScatter}>
+                <defs>
+                  <pattern id={patternId} width={progress.artwork.width} height={progress.artwork.height} patternUnits="userSpaceOnUse">
+                    <image href={puzzle.imageUrl} width={progress.artwork.width} height={progress.artwork.height} preserveAspectRatio="none" />
+                  </pattern>
+                </defs>
+                {pieces.map((piece) => (
+                  <g className="pile-piece-set" key={piece.id} transform={pileLayout[piece.id]}>
+                    <path className="pile-backing" d={piece.path} transform="translate(0 1.3)" />
+                    <path className="pile-piece" d={piece.path} fill={`url(#${patternId})`} />
+                  </g>
+                ))}
+              </svg>
+            )}
           </span>
-        ) : (
-          <svg viewBox={`0 0 ${PILE_WIDTH} ${PILE_HEIGHT}`} onPointerMove={pushPieces} onPointerLeave={commitScatter}>
-            <defs>
-              <pattern id={patternId} width={progress.artwork.width} height={progress.artwork.height} patternUnits="userSpaceOnUse">
-                <image href={puzzle.imageUrl} width={progress.artwork.width} height={progress.artwork.height} preserveAspectRatio="none" />
-              </pattern>
-            </defs>
-            {pieces.map((piece) => (
-              <g className="pile-piece-set" key={piece.id} transform={pileLayout[piece.id]} onClick={openWithScatter}>
-                <path className="pile-backing" d={piece.path} transform="translate(0 1.3)" />
-                <path className="pile-piece" d={piece.path} fill={`url(#${patternId})`} />
-              </g>
-            ))}
-          </svg>
-        )}
+          <img className="renaissance-frame-image" src={RENAISSANCE_FRAME_IMAGE} alt="" draggable="false" />
+        </span>
       </span>
       <div className="art-info-card">
         <p className="art-info-artist">{puzzle.artwork.artist}</p>
