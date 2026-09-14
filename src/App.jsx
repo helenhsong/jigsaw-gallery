@@ -1,25 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
-import { ProjectHeader } from '@helenhsong/ui'
+import { Button, ProjectHeader } from '@helenhsong/ui'
 import '@helenhsong/ui/style.css'
 import readme from '../README.md?raw'
 import {
   DEFAULT_ARTWORK, DIFFICULTIES, TABLE_HEIGHT, TABLE_WIDTH,
-  createPieces, fitPieceCenter, groupCount, moveGroup, rotateGroup, scatterPieces, snapNearbyGroups,
+  createPieces, groupCount, moveGroup, rotateGroup, scatterPieces, snapNearbyGroups,
 } from './jigsaw'
 import { loadPuzzleCollection, savePuzzleCollection } from './persistence'
 
 const PUZZLE_IMAGE = import.meta.env.BASE_URL + 'puzzles/01.jpeg'
-const RENAISSANCE_FRAME_IMAGE = import.meta.env.BASE_URL + 'frames/renaissance-frame-rose.png'
 const MIN_FLOOR_WIDTH = 560
 const PIECE_GEOMETRY_VERSION = 11
 const SCATTER_VERSION = 2
-const PILE_WIDTH = 194
-const PILE_HEIGHT = 262
-const LANDING_SPREAD = 1.18
 const INSTRUCTIONS = 'Drag to move · Double-click or press R to rotate'
-const TIMELINE_LINE_COUNT = 40
-const TIMELINE_PROXIMITY = 48
 const PLACEHOLDER_ARTWORK = {
   title: 'Untitled (Orange Glasses)',
   artist: 'Artist unknown',
@@ -27,12 +20,12 @@ const PLACEHOLDER_ARTWORK = {
   medium: 'Digital image',
 }
 const PUZZLES = [
-  { id: 'puzzle-01', number: '01', level: 'Easy', difficultyKey: 'easy', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
-  { id: 'puzzle-02', number: '02', level: 'Easy', difficultyKey: 'easy', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
-  { id: 'puzzle-03', number: '03', level: 'Medium', difficultyKey: 'medium', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
-  { id: 'puzzle-04', number: '04', level: 'Medium', difficultyKey: 'medium', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
-  { id: 'puzzle-05', number: '05', level: 'Hard', difficultyKey: 'hard', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
-  { id: 'puzzle-06', number: '06', level: 'Hard', difficultyKey: 'hard', imageUrl: PUZZLE_IMAGE, artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-01', number: '01', level: 'Easy', difficultyKey: 'easy', imageUrl: PUZZLE_IMAGE, surfaceColor: '#ded2c4', artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-02', number: '02', level: 'Easy', difficultyKey: 'easy', imageUrl: PUZZLE_IMAGE, surfaceColor: '#ded2c4', artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-03', number: '03', level: 'Medium', difficultyKey: 'medium', imageUrl: PUZZLE_IMAGE, surfaceColor: '#ded2c4', artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-04', number: '04', level: 'Medium', difficultyKey: 'medium', imageUrl: PUZZLE_IMAGE, surfaceColor: '#ded2c4', artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-05', number: '05', level: 'Hard', difficultyKey: 'hard', imageUrl: PUZZLE_IMAGE, surfaceColor: '#ded2c4', artwork: PLACEHOLDER_ARTWORK },
+  { id: 'puzzle-06', number: '06', level: 'Hard', difficultyKey: 'hard', imageUrl: PUZZLE_IMAGE, surfaceColor: '#ded2c4', artwork: PLACEHOLDER_ARTWORK },
 ]
 function freshPuzzle(puzzle, floorBounds = { width: TABLE_WIDTH, height: TABLE_HEIGHT }) {
   const difficulty = DIFFICULTIES.find((option) => option.key === puzzle.difficultyKey)
@@ -89,6 +82,21 @@ function isComplete(progress) {
   return Boolean(progress?.positions) && groupCount(progress.positions) === 1
 }
 
+function impactStyle(pieceId) {
+  const y = ((pieceId * 7) % 9 - 4) * 0.65
+  const twist = ((pieceId * 5) % 7 - 3) * 0.35
+  return {
+    '--impact-y-1': `${y}px`,
+    '--impact-y-2': `${-y * 0.7}px`,
+    '--impact-y-3': `${y * 0.22}px`,
+    '--impact-rotate-1': `${twist}deg`,
+    '--impact-rotate-2': `${-twist * 0.65}deg`,
+    '--impact-rotate-3': `${twist * 0.2}deg`,
+    '--impact-delay': `${pieceId % 6 * 9}ms`,
+    '--impact-duration': `${520 + pieceId % 5 * 18}ms`,
+  }
+}
+
 const STORED_PUZZLES = readSavedPuzzles()
 const INITIAL_PUZZLES = Object.fromEntries(PUZZLES.map((puzzle) => [
   puzzle.id,
@@ -97,341 +105,190 @@ const INITIAL_PUZZLES = Object.fromEntries(PUZZLES.map((puzzle) => [
 const BOOTSTRAP_PUZZLE = PUZZLES[0]
 const BOOTSTRAP_PROGRESS = INITIAL_PUZZLES[BOOTSTRAP_PUZZLE.id]
 
-function pilePoint(progress, position) {
-  return {
-    x: PILE_WIDTH / 2 + (position.x / progress.floorBounds.width - 0.5) * PILE_WIDTH * LANDING_SPREAD,
-    y: PILE_HEIGHT / 2 + (position.y / progress.floorBounds.height - 0.5) * PILE_HEIGHT * LANDING_SPREAD,
-  }
-}
+function renderStaticPuzzleCanvas(puzzle, progress) {
+  const artworkPatternId = `puzzle-artwork-${puzzle.id}`
+  const grainFilterId = `paper-grain-${puzzle.id}`
+  const fibersPatternId = `paper-fibers-${puzzle.id}`
+  const sheenGradientId = `piece-sheen-${puzzle.id}`
 
-function createPileLayout(progress, offsets = {}) {
-  return Object.fromEntries(progress.pieces.map((piece) => {
-    const position = progress.positions[piece.id]
-    const offset = offsets[position.group] ?? { x: 0, y: 0 }
-    const point = pilePoint(progress, position)
-    const scale = Math.max(0.1, Math.min(0.5, 21 / Math.sqrt(piece.width * piece.height)))
-    const fitted = fitPieceCenter(
-      piece,
-      position.rotation,
-      { x: point.x + offset.x, y: point.y + offset.y },
-      { width: PILE_WIDTH, height: PILE_HEIGHT },
-      scale,
-      2,
-    )
-    const { x, y } = fitted
-    return [piece.id, `translate(${x} ${y}) rotate(${position.rotation}) scale(${scale}) translate(${-piece.centerX} ${-piece.centerY})`]
-  }))
-}
+  return (
+    <svg
+      className={`puzzle-floor${isComplete(progress) ? ' is-complete' : ''}`}
+      viewBox={`0 0 ${progress.floorBounds.width} ${progress.floorBounds.height}`}
+      aria-hidden="true"
+    >
+      <defs>
+        <pattern id={artworkPatternId} width={progress.artwork.width} height={progress.artwork.height} patternUnits="userSpaceOnUse">
+          <image href={puzzle.imageUrl} width={progress.artwork.width} height={progress.artwork.height} preserveAspectRatio="none" />
+        </pattern>
+        <filter id={grainFilterId} x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="3" seed="12" stitchTiles="stitch" />
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+        <pattern id={fibersPatternId} width="150" height="150" patternUnits="userSpaceOnUse">
+          <rect width="150" height="150" filter={`url(#${grainFilterId})`} opacity="0.22" />
+        </pattern>
+        <linearGradient id={sheenGradientId} x1="0" y1="0" x2="0.8" y2="1">
+          <stop offset="0" stopColor="#ffffff" stopOpacity="0.13" />
+          <stop offset="0.48" stopColor="#ffffff" stopOpacity="0.01" />
+          <stop offset="1" stopColor="#161616" stopOpacity="0.075" />
+        </linearGradient>
+      </defs>
 
-function applyPileOffsets(progress, offsets) {
-  let positions = progress.positions
-  for (const [group, offset] of Object.entries(offsets)) {
-    positions = moveGroup(
-      positions,
-      progress.pieces,
-      Number(group),
-      offset.x * progress.floorBounds.width / (PILE_WIDTH * LANDING_SPREAD),
-      offset.y * progress.floorBounds.height / (PILE_HEIGHT * LANDING_SPREAD),
-      progress.floorBounds,
-    )
-  }
-  return { ...progress, positions }
-}
-
-function createPuzzleFlight(tile, surface) {
-  const sourcePieces = [...surface.querySelectorAll('.pile-piece-set')]
-  const app = document.querySelector('.puzzle-app')
-  if (!sourcePieces.length || !app || typeof app.animate !== 'function') return null
-
-  const appBounds = app.getBoundingClientRect()
-  const surfaceBounds = surface.getBoundingClientRect()
-  const tileIndex = [...app.querySelectorAll('.puzzle-tile')].indexOf(tile)
-  const collectionLayer = app.cloneNode(true)
-  const clonedTile = collectionLayer.querySelectorAll('.puzzle-tile')[tileIndex]
-  clonedTile?.querySelector('.puzzle-object')?.style.setProperty('visibility', 'hidden')
-  collectionLayer.classList.add('puzzle-transition-collection')
-  collectionLayer.setAttribute('aria-hidden', 'true')
-  Object.assign(collectionLayer.style, {
-    position: 'fixed',
-    zIndex: '40',
-    top: `${appBounds.top}px`,
-    left: `${appBounds.left}px`,
-    width: `${appBounds.width}px`,
-    height: `${appBounds.height}px`,
-    margin: '0',
-    pointerEvents: 'none',
-  })
-
-  const pieceLayer = document.createElement('div')
-  pieceLayer.className = 'puzzle-app puzzle-transition-pieces'
-  pieceLayer.setAttribute('aria-hidden', 'true')
-  const sourceViewBox = surface.getAttribute('viewBox')
-  const sourceAspectRatio = surface.getAttribute('preserveAspectRatio')
-  const defs = surface.querySelector('defs')
-  const sourceFilter = window.getComputedStyle(surface).filter
-  const flightId = `puzzle-flight-${Date.now().toString(36)}`
-  const flights = sourcePieces.map((sourcePiece, pieceId) => {
-    const sourceBounds = sourcePiece.getBoundingClientRect()
-    const wrapper = document.createElement('div')
-    wrapper.className = 'puzzle-transition-piece'
-    wrapper.dataset.pieceId = String(pieceId)
-    Object.assign(wrapper.style, {
-      position: 'fixed',
-      top: `${sourceBounds.top}px`,
-      left: `${sourceBounds.left}px`,
-      width: `${sourceBounds.width}px`,
-      height: `${sourceBounds.height}px`,
-      transformOrigin: '0 0',
-    })
-
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    if (sourceViewBox) svg.setAttribute('viewBox', sourceViewBox)
-    if (sourceAspectRatio) svg.setAttribute('preserveAspectRatio', sourceAspectRatio)
-    Object.assign(svg.style, {
-      position: 'absolute',
-      top: `${surfaceBounds.top - sourceBounds.top}px`,
-      left: `${surfaceBounds.left - sourceBounds.left}px`,
-      width: `${surfaceBounds.width}px`,
-      height: `${surfaceBounds.height}px`,
-      overflow: 'visible',
-      filter: sourceFilter,
-    })
-    const clonedDefs = defs?.cloneNode(true)
-    const clonedPiece = sourcePiece.cloneNode(true)
-    const clonedPattern = clonedDefs?.querySelector('pattern')
-    if (clonedPattern) {
-      const patternId = `${flightId}-${pieceId}`
-      clonedPattern.id = patternId
-      clonedPiece.querySelector('.pile-piece')?.setAttribute('fill', `url(#${patternId})`)
-    }
-    if (clonedDefs) svg.append(clonedDefs)
-    svg.append(clonedPiece)
-    wrapper.append(svg)
-    pieceLayer.append(wrapper)
-    return { pieceId, sourceBounds, wrapper }
-  })
-
-  document.body.append(collectionLayer, pieceLayer)
-  return { collectionLayer, pieceLayer, flights }
-}
-
-function runPuzzleFlight(flight) {
-  const duration = 820
-  const easing = 'cubic-bezier(0.16, 1, 0.3, 1)'
-  const cleanup = () => {
-    flight.collectionLayer.remove()
-    flight.pieceLayer.remove()
-    document.documentElement.classList.remove('puzzle-opening')
-  }
-
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      const animations = flight.flights.map(({ pieceId, sourceBounds, wrapper }) => {
-        const target = document.querySelector(`[data-transition-piece="${pieceId}"]`)
-        const targetBounds = target?.getBoundingClientRect()
-        if (!targetBounds?.width || !targetBounds?.height) return null
-        const moveX = targetBounds.left - sourceBounds.left
-        const moveY = targetBounds.top - sourceBounds.top
-        const scaleX = targetBounds.width / sourceBounds.width
-        const scaleY = targetBounds.height / sourceBounds.height
-        return wrapper.animate(
-          [
-            { transform: 'translate(0, 0) scale(1)' },
-            { transform: `translate(${moveX}px, ${moveY}px) scale(${scaleX}, ${scaleY})` },
-          ],
-          { duration, easing, fill: 'forwards' },
+      {progress.zOrder.map((pieceId) => {
+        const piece = progress.pieces[pieceId]
+        const position = progress.positions[pieceId]
+        return (
+          <g key={piece.id} transform={`translate(${position.x} ${position.y})`}>
+            <g className="piece-impact" style={impactStyle(piece.id)}>
+              <g className="piece-shadow">
+                <g transform={`rotate(${position.rotation}) translate(${-piece.centerX} ${-piece.centerY})`}>
+                  <path className="piece-backing" d={piece.path} transform="translate(0 1.7)" />
+                  <path
+                    className="puzzle-piece is-static"
+                    d={piece.path}
+                    fill={`url(#${artworkPatternId})`}
+                    stroke="rgba(255,255,255,0.52)"
+                    strokeWidth="0.8"
+                    strokeLinejoin="round"
+                  />
+                  <path className="piece-texture" d={piece.path} fill={`url(#${fibersPatternId})`} />
+                  <path className="piece-sheen" d={piece.path} fill={`url(#${sheenGradientId})`} />
+                </g>
+              </g>
+            </g>
+          </g>
         )
-      }).filter(Boolean)
-
-      const collectionAnimation = flight.collectionLayer.animate(
-        [{ opacity: 1 }, { opacity: 0 }],
-        { duration: 240, easing: 'ease-out', fill: 'forwards' },
-      )
-      Promise.allSettled([
-        collectionAnimation.finished,
-        ...animations.map((animation) => animation.finished),
-      ]).then(cleanup)
-    })
-  })
+      })}
+    </svg>
+  )
 }
 
-function PuzzleTile({ puzzle, progress, cursorWindRef, onOpen, onScatter }) {
-  const [hoverOffsets, setHoverOffsets] = useState({})
+function PuzzleTile({ puzzle, progress, isInteractive, canvas, impact, toolbar, onOpen }) {
   const complete = isComplete(progress)
   const pieces = progress.pieces
-  const pileLayout = createPileLayout(progress, hoverOffsets)
-  const patternId = `pile-art-${puzzle.id}`
+  const connectionsMade = pieces.length - groupCount(progress.positions)
+  const progressPercent = complete
+    ? 100
+    : Math.round(connectionsMade / Math.max(1, pieces.length - 1) * 100)
 
-  function pushPieces(event) {
-    if (event.pointerType !== 'mouse') return
-    const wind = cursorWindRef.current
-    if (wind.speed < 1.1) return
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const cursor = {
-      x: (event.clientX - bounds.left) / bounds.width * PILE_WIDTH,
-      y: (event.clientY - bounds.top) / bounds.height * PILE_HEIGHT,
-    }
-    const centers = {}
-    for (const piece of pieces) {
-      const position = progress.positions[piece.id]
-      const point = pilePoint(progress, position)
-      const center = centers[position.group] ?? { x: 0, y: 0, count: 0 }
-      center.x += point.x
-      center.y += point.y
-      center.count += 1
-      centers[position.group] = center
-    }
-
-    setHoverOffsets((current) => {
-      let changed = false
-      const next = { ...current }
-      for (const [group, total] of Object.entries(centers)) {
-        const base = { x: total.x / total.count, y: total.y / total.count }
-        const offset = current[group] ?? { x: 0, y: 0 }
-        const dx = base.x + offset.x - cursor.x
-        const dy = base.y + offset.y - cursor.y
-        const distance = Math.hypot(dx, dy)
-        if (distance >= 46) continue
-        const proximity = 1 - distance / 46
-        const force = Math.min(2.4, 0.55 + (wind.speed - 1.1) * 0.72) * proximity
-        let x = offset.x + wind.x / wind.speed * force
-        let y = offset.y + wind.y / wind.speed * force
-        const displacement = Math.hypot(x, y)
-        const maxDisplacement = pieces.length <= 12 ? 8 : 6
-        if (displacement > maxDisplacement) {
-          x = x / displacement * maxDisplacement
-          y = y / displacement * maxDisplacement
-        }
-        next[group] = { x, y }
-        changed = true
-      }
-      return changed ? next : current
-    })
-  }
-
-  function commitScatter() {
-    if (!Object.keys(hoverOffsets).length) return
-    onScatter(puzzle, hoverOffsets)
-    setHoverOffsets({})
-  }
-
-  function openWithScatter(event) {
-    const tile = event?.currentTarget?.closest?.('.puzzle-tile') ?? event?.currentTarget
-    const selectedSurface = tile?.querySelector?.('svg, .exhibit-frame')
-    const open = () => onOpen(puzzle, hoverOffsets)
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-    if (reduceMotion || !selectedSurface?.matches('svg')) {
-      open()
-      setHoverOffsets({})
-      return
-    }
-
-    const flight = createPuzzleFlight(tile, selectedSurface)
-    if (!flight) {
-      open()
-      setHoverOffsets({})
-      return
-    }
-
-    document.documentElement.classList.add('puzzle-opening')
-    flushSync(open)
-    runPuzzleFlight(flight)
-    setHoverOffsets({})
+  function openPuzzle() {
+    onOpen(puzzle)
   }
 
   return (
     <div
-      className={`puzzle-tile${complete ? ' is-complete' : ''}`}
-      role="button"
-      tabIndex="0"
-      aria-label={`Open ${puzzle.artwork.title}, puzzle ${puzzle.number}, ${puzzle.level}${complete ? ', assembled' : ''}`}
-      onKeyDown={(event) => {
+      className={`puzzle-tile${complete ? ' is-complete' : ''}${isInteractive ? ' is-interactive' : ''}${impact ? ` is-impacting impact-${impact.direction > 0 ? 'forward' : 'back'} impact-${impact.token % 2 ? 'a' : 'b'}` : ''}`}
+      role={isInteractive ? undefined : 'button'}
+      tabIndex={isInteractive ? undefined : '0'}
+      aria-label={isInteractive
+        ? undefined
+        : complete
+          ? `Open ${puzzle.artwork.title}, puzzle ${puzzle.number}, ${puzzle.level}, assembled`
+          : `Open puzzle ${puzzle.number}, ${puzzle.level}, ${progressPercent}% assembled`}
+      onKeyDown={isInteractive ? undefined : (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
-          openWithScatter(event)
+          openPuzzle()
         }
       }}
     >
-      <span className="puzzle-object" aria-hidden="true" onClick={openWithScatter}>
-        <span className={`renaissance-frame${complete ? ' exhibit-frame' : ''}`}>
-          <span className="renaissance-frame-opening">
-            {complete ? (
-              <img className="framed-artwork" src={puzzle.imageUrl} alt="" />
-            ) : (
-              <svg viewBox={`0 0 ${PILE_WIDTH} ${PILE_HEIGHT}`} onPointerMove={pushPieces} onPointerLeave={commitScatter}>
-                <defs>
-                  <pattern id={patternId} width={progress.artwork.width} height={progress.artwork.height} patternUnits="userSpaceOnUse">
-                    <image href={puzzle.imageUrl} width={progress.artwork.width} height={progress.artwork.height} preserveAspectRatio="none" />
-                  </pattern>
-                </defs>
-                {pieces.map((piece) => (
-                  <g className="pile-piece-set" key={piece.id} transform={pileLayout[piece.id]}>
-                    <path className="pile-backing" d={piece.path} transform="translate(0 1.3)" />
-                    <path className="pile-piece" d={piece.path} fill={`url(#${patternId})`} />
-                  </g>
-                ))}
-              </svg>
-            )}
+      <div className="puzzle-presentation">
+        <div className="puzzle-toolbar-slot">
+          {toolbar}
+        </div>
+        <span
+          className="puzzle-object"
+          aria-hidden={isInteractive ? undefined : 'true'}
+          onClick={isInteractive ? undefined : openPuzzle}
+        >
+          <span className={`puzzle-preview${complete ? ' is-complete' : ''}${isInteractive ? ' is-interactive' : ''}`}>
+            <span className="puzzle-preview-surface" style={{ '--puzzle-surface': puzzle.surfaceColor }}>
+              {isInteractive ? canvas : renderStaticPuzzleCanvas(puzzle, progress)}
+            </span>
           </span>
-          <img className="renaissance-frame-image" src={RENAISSANCE_FRAME_IMAGE} alt="" draggable="false" />
         </span>
-      </span>
-      <div className="art-info-card">
-        <p className="art-info-artist">{puzzle.artwork.artist}</p>
-        <p className="art-info-title"><cite>{puzzle.artwork.title}</cite>, {puzzle.artwork.year}</p>
-        <p className="art-info-medium">{puzzle.artwork.medium}</p>
+        <div className={`art-info-card${complete ? ' is-artwork' : ' is-progress'}`}>
+          <p className="art-info-artist">{puzzle.artwork.artist}</p>
+          <p className="art-info-title"><cite>{puzzle.artwork.title}</cite>, {puzzle.artwork.year}</p>
+        </div>
       </div>
     </div>
   )
 }
 
-function LineMinimap({ activeIndex, puzzles, progress, progressByPuzzle, onScrub }) {
-  const [pointer, setPointer] = useState(null)
-  const activePuzzle = puzzles[activeIndex]
-  const assembled = isComplete(progressByPuzzle[activePuzzle.id])
-
-  function trackPointer(event) {
-    const bounds = event.currentTarget.getBoundingClientRect()
-    setPointer({ x: event.clientX - bounds.left, width: bounds.width })
-  }
-
+function RestartIcon() {
   return (
-    <nav className="collection-minimap" aria-label="Choose a puzzle">
-      <div className="minimap-rail" onPointerMove={trackPointer} onPointerLeave={() => setPointer(null)}>
-        <div className="minimap-lines" aria-hidden="true">
-          {Array.from({ length: TIMELINE_LINE_COUNT }, (_, index) => {
-            const railWidth = pointer?.width ?? 220
-            const lineX = index / (TIMELINE_LINE_COUNT - 1) * railWidth
-            const interactionX = pointer?.x ?? progress * railWidth
-            const distance = Math.abs(interactionX - lineX)
-            const proximity = Math.max(0, 1 - distance / TIMELINE_PROXIMITY)
-            const scale = 1 + 20 * proximity * proximity
-            const major = puzzles.some((_, puzzleIndex) => (
-              Math.round(puzzleIndex / (puzzles.length - 1) * (TIMELINE_LINE_COUNT - 1)) === index
-            ))
-            return (
-              <span
-                className={`minimap-line${major ? ' is-major' : ''}`}
-                key={index}
-                style={{ '--line-scale': scale }}
-              />
-            )
-          })}
-        </div>
-        <input
-          className="minimap-range"
-          type="range"
-          min="0"
-          max="1"
-          step={1 / (puzzles.length - 1)}
-          value={progress}
-          aria-label="Current puzzle"
-          aria-valuetext={`Puzzle ${activePuzzle.number}, ${activePuzzle.level}${assembled ? ', assembled' : ''}`}
-          onChange={(event) => onScrub(Number(event.target.value))}
-        />
-      </div>
-    </nav>
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 4v6h6" />
+      <path d="M4.7 15a8 8 0 1 0 .3-6.4L4 10" />
+    </svg>
+  )
+}
+
+function RotateLeftIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3 7v5h5" />
+      <path d="M5.1 16.5a8 8 0 1 0 .7-10.3L3 9" />
+    </svg>
+  )
+}
+
+function RotateRightIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M21 7v5h-5" />
+      <path d="M18.9 16.5a8 8 0 1 1-.7-10.3L21 9" />
+    </svg>
+  )
+}
+
+function PuzzleTool({ shortcut, label, disabled = false, onClick, children }) {
+  return (
+    <span className="puzzle-tool-control">
+      <Button
+        className="puzzle-tool-button"
+        variant="outline"
+        size="icon"
+        type="button"
+        aria-label={`${label}. Keyboard shortcut ${shortcut}.`}
+        disabled={disabled}
+        onClick={onClick}
+      >
+        {children}
+      </Button>
+      <span className="puzzle-tool-tooltip" role="tooltip">
+        <kbd>{shortcut}</kbd>
+        <span>{label}</span>
+      </span>
+    </span>
+  )
+}
+
+function PuzzleToolbar({ hasSelection, onRestart, onRotate }) {
+  return (
+    <div className="puzzle-toolbar" role="toolbar" aria-label="Puzzle controls">
+      <PuzzleTool shortcut="C" label="Restart puzzle" onClick={onRestart}>
+        <RestartIcon />
+      </PuzzleTool>
+      <PuzzleTool
+        shortcut="L"
+        label="Rotate selected piece left"
+        disabled={!hasSelection}
+        onClick={() => onRotate(-1)}
+      >
+        <RotateLeftIcon />
+      </PuzzleTool>
+      <PuzzleTool
+        shortcut="R"
+        label="Rotate selected piece right"
+        disabled={!hasSelection}
+        onClick={() => onRotate(1)}
+      >
+        <RotateRightIcon />
+      </PuzzleTool>
+    </div>
   )
 }
 
@@ -439,20 +296,16 @@ function App() {
   const tableRef = useRef(null)
   const collectionRef = useRef(null)
   const galleryWheelRef = useRef({ frame: null, target: 0 })
+  const galleryNavigationRef = useRef(null)
+  const navigationImpactIdRef = useRef(0)
   const dragRef = useRef(null)
   const tapRef = useRef(null)
   const pointerTypeRef = useRef(null)
-  const dialogRef = useRef(null)
-  const cursorWindRef = useRef({ x: 0, y: 0, speed: 0 })
   const savedPuzzlesRef = useRef(INITIAL_PUZZLES)
-  const puzzleDifficultyRef = useRef(
-    DIFFICULTIES.find((difficulty) => difficulty.key === BOOTSTRAP_PROGRESS.difficultyKey),
-  )
   const floorBoundsRef = useRef(BOOTSTRAP_PROGRESS.floorBounds)
   const positionsRef = useRef(BOOTSTRAP_PROGRESS.positions)
-  const [activePuzzleId, setActivePuzzleId] = useState(null)
-  const [visiblePuzzleIndex, setVisiblePuzzleIndex] = useState(0)
-  const [galleryProgress, setGalleryProgress] = useState(0)
+  const activePuzzleIdRef = useRef(BOOTSTRAP_PUZZLE.id)
+  const [activePuzzleId, setActivePuzzleId] = useState(BOOTSTRAP_PUZZLE.id)
   const [savedPuzzles, setSavedPuzzles] = useState(INITIAL_PUZZLES)
   const [artwork, setArtwork] = useState(BOOTSTRAP_PROGRESS.artwork)
   const [floorBounds, setFloorBounds] = useState(BOOTSTRAP_PROGRESS.floorBounds)
@@ -461,35 +314,13 @@ function App() {
   const [zOrder, setZOrder] = useState(BOOTSTRAP_PROGRESS.zOrder)
   const [selectedPieceId, setSelectedPieceId] = useState(null)
   const [draggingGroup, setDraggingGroup] = useState(null)
-  const [isDropping, setIsDropping] = useState(false)
-  const [dropCycle, setDropCycle] = useState(0)
+  const [navigationImpact, setNavigationImpact] = useState(null)
   const [feedback, setFeedback] = useState(
     isComplete(BOOTSTRAP_PROGRESS) ? 'All together. Nicely done.' : INSTRUCTIONS,
   )
   const [imageError, setImageError] = useState(false)
 
   useEffect(() => {
-    let previous = null
-    const trackCursorWind = (event) => {
-      const current = { x: event.clientX, y: event.clientY, time: event.timeStamp }
-      if (!previous) {
-        previous = current
-        return
-      }
-      const elapsed = current.time - previous.time
-      const x = current.x - previous.x
-      const y = current.y - previous.y
-      cursorWindRef.current = elapsed > 0 && elapsed < 80
-        ? { x, y, speed: Math.hypot(x, y) / elapsed }
-        : { x: 0, y: 0, speed: 0 }
-      previous = current
-    }
-    window.addEventListener('pointermove', trackCursorWind, { capture: true, passive: true })
-    return () => window.removeEventListener('pointermove', trackCursorWind, true)
-  }, [])
-
-  useEffect(() => {
-    if (activePuzzleId) return undefined
     const gallery = collectionRef.current
     if (!gallery) return undefined
 
@@ -518,6 +349,7 @@ function App() {
       if (dominantDelta === 0) return
 
       event.preventDefault()
+      galleryNavigationRef.current = null
       const multiplier = event.deltaMode === 1
         ? 16
         : event.deltaMode === 2
@@ -533,41 +365,69 @@ function App() {
       }
     }
 
-    const keepTargetInBounds = () => {
-      const maximumScroll = Math.max(0, gallery.scrollWidth - gallery.clientWidth)
-      wheelState.target = Math.max(0, Math.min(maximumScroll, gallery.scrollLeft))
+    const cancelProgrammaticNavigation = () => {
+      galleryNavigationRef.current = null
+    }
+
+    let resizeFrame = null
+    const centerActivePuzzle = () => {
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame)
+      const activeIndex = PUZZLES.findIndex((puzzle) => puzzle.id === activePuzzleIdRef.current)
+      resizeFrame = window.requestAnimationFrame(() => {
+        const tile = gallery.children[activeIndex]
+        const maximumScroll = Math.max(0, gallery.scrollWidth - gallery.clientWidth)
+        const left = tile
+          ? tile.offsetLeft - (gallery.clientWidth - tile.offsetWidth) / 2
+          : gallery.scrollLeft
+        const boundedLeft = Math.max(0, Math.min(maximumScroll, left))
+        gallery.scrollLeft = boundedLeft
+        wheelState.target = boundedLeft
+        resizeFrame = null
+      })
     }
 
     window.addEventListener('wheel', scrollGallery, { passive: false })
-    window.addEventListener('resize', keepTargetInBounds)
+    window.addEventListener('resize', centerActivePuzzle)
+    gallery.addEventListener('pointerdown', cancelProgrammaticNavigation)
 
     return () => {
       window.removeEventListener('wheel', scrollGallery)
-      window.removeEventListener('resize', keepTargetInBounds)
+      window.removeEventListener('resize', centerActivePuzzle)
+      gallery.removeEventListener('pointerdown', cancelProgrammaticNavigation)
       if (wheelState.frame !== null) window.cancelAnimationFrame(wheelState.frame)
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame)
       wheelState.frame = null
     }
-  }, [activePuzzleId])
+  }, [])
 
   const activePuzzle = PUZZLES.find((puzzle) => puzzle.id === activePuzzleId)
-  const difficulty = puzzleDifficultyRef.current
+  const difficulty = DIFFICULTIES.find((option) => option.key === activePuzzle.difficultyKey)
   const remainingGroups = groupCount(positions)
   const complete = remainingGroups === 1
   const selectedGroup = selectedPieceId === null ? null : positions[selectedPieceId]?.group
 
-  function syncTimelineToScroll(event) {
+  function showPuzzleOnCanvas(index) {
+    const puzzle = PUZZLES[index]
+    if (!puzzle) return
+    if (puzzle.id !== activePuzzleIdRef.current) openPuzzle(puzzle)
+  }
+
+  function syncPuzzleToScroll(event) {
     const gallery = event.currentTarget
+    const programmedNavigation = galleryNavigationRef.current
+    if (programmedNavigation) {
+      if (Math.abs(gallery.scrollLeft - programmedNavigation.left) <= 1) {
+        galleryNavigationRef.current = null
+      }
+      return
+    }
     const maximumScroll = gallery.scrollWidth - gallery.clientWidth
-    const progress = maximumScroll > 0
-      ? Math.max(0, Math.min(1, gallery.scrollLeft / maximumScroll))
-      : 0
-    setGalleryProgress(progress)
     if (gallery.scrollLeft <= 1) {
-      setVisiblePuzzleIndex(0)
+      showPuzzleOnCanvas(0)
       return
     }
     if (gallery.scrollLeft >= maximumScroll - 1) {
-      setVisiblePuzzleIndex(PUZZLES.length - 1)
+      showPuzzleOnCanvas(PUZZLES.length - 1)
       return
     }
     const galleryCenter = gallery.scrollLeft + gallery.clientWidth / 2
@@ -581,31 +441,36 @@ function App() {
         closestIndex = index
       }
     }
-    setVisiblePuzzleIndex((current) => current === closestIndex ? current : closestIndex)
+    showPuzzleOnCanvas(closestIndex)
   }
 
-  function showPuzzleInGallery(index, preferredBehavior) {
+  function showPuzzleInGallery(index) {
     const gallery = collectionRef.current
     const tile = gallery?.children[index]
     if (!gallery || !tile) return
-    const left = tile.offsetLeft - (gallery.clientWidth - tile.offsetWidth) / 2
     const maximumScroll = gallery.scrollWidth - gallery.clientWidth
+    const left = tile.offsetLeft - (gallery.clientWidth - tile.offsetWidth) / 2
     const boundedLeft = Math.max(0, Math.min(maximumScroll, left))
+    galleryWheelRef.current.target = boundedLeft
+    galleryNavigationRef.current = { index, left: boundedLeft }
     gallery.scrollTo({
       left: boundedLeft,
-      behavior: preferredBehavior
-        ?? (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'),
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
     })
-    setGalleryProgress(maximumScroll > 0 ? boundedLeft / maximumScroll : 0)
-    setVisiblePuzzleIndex(index)
+    showPuzzleOnCanvas(index)
   }
 
-  function scrubPuzzleGallery(progress) {
-    const gallery = collectionRef.current
-    if (!gallery) return
-    const maximumScroll = gallery.scrollWidth - gallery.clientWidth
-    gallery.scrollTo({ left: progress * maximumScroll, behavior: 'auto' })
-    setGalleryProgress(progress)
+  function navigateGallery(direction) {
+    const currentIndex = PUZZLES.findIndex((puzzle) => puzzle.id === activePuzzleIdRef.current)
+    const nextIndex = Math.max(0, Math.min(PUZZLES.length - 1, currentIndex + direction))
+    if (nextIndex === currentIndex) return
+    navigationImpactIdRef.current += 1
+    setNavigationImpact({
+      token: navigationImpactIdRef.current,
+      direction,
+      puzzleIds: [PUZZLES[currentIndex].id, PUZZLES[nextIndex].id],
+    })
+    showPuzzleInGallery(nextIndex)
   }
 
   function commitPositions(nextPositions) {
@@ -640,21 +505,10 @@ function App() {
     }
   }
 
-  function moveLandingPieces(puzzle, offsets) {
-    const progress = savedPuzzlesRef.current[puzzle.id]
-    if (!progress || !Object.keys(offsets).length) return
-    storePuzzle(puzzle.id, applyPileOffsets(progress, offsets))
-  }
-
-  function openPuzzle(puzzle, offsets = {}) {
-    let progress = savedPuzzlesRef.current[puzzle.id] ?? freshPuzzle(puzzle, floorBoundsRef.current)
-    if (Object.keys(offsets).length) {
-      progress = applyPileOffsets(progress, offsets)
-      storePuzzle(puzzle.id, progress)
-    }
-    puzzleDifficultyRef.current = DIFFICULTIES.find(
-      (difficultyOption) => difficultyOption.key === puzzle.difficultyKey,
-    )
+  function openPuzzle(puzzle) {
+    const currentPuzzleId = activePuzzleIdRef.current
+    if (currentPuzzleId !== puzzle.id) storePuzzle(currentPuzzleId)
+    const progress = savedPuzzlesRef.current[puzzle.id] ?? freshPuzzle(puzzle, floorBoundsRef.current)
     floorBoundsRef.current = progress.floorBounds
     positionsRef.current = progress.positions
     setArtwork(progress.artwork)
@@ -664,48 +518,35 @@ function App() {
     setZOrder(progress.zOrder)
     setSelectedPieceId(null)
     setDraggingGroup(null)
-    setIsDropping(false)
     setImageError(false)
     setFeedback(isComplete(progress) ? 'All together. Nicely done.' : INSTRUCTIONS)
-    setVisiblePuzzleIndex(PUZZLES.findIndex((option) => option.id === puzzle.id))
+    activePuzzleIdRef.current = puzzle.id
     setActivePuzzleId(puzzle.id)
   }
 
-  function leavePuzzle() {
-    const galleryIndex = PUZZLES.findIndex((puzzle) => puzzle.id === activePuzzleId)
-    storePuzzle(activePuzzleId)
-    setActivePuzzleId(null)
-    setSelectedPieceId(null)
-    window.requestAnimationFrame(() => showPuzzleInGallery(Math.max(0, galleryIndex), 'auto'))
-  }
-
-  function resetPuzzle(nextArtwork = artwork, animate = false) {
-    const nextPieces = createPieces(difficulty, nextArtwork, activePuzzleId)
-    dragRef.current = null
-    tapRef.current = null
-    setPieces(nextPieces)
-    commitPositions(scatterPieces(nextPieces, floorBoundsRef.current))
-    setZOrder([...nextPieces].sort((a, b) => a.fallDelay - b.fallDelay).map((piece) => piece.id))
+  function restartPuzzle() {
+    if (!activePuzzle) return
+    const progress = freshPuzzle(activePuzzle, floorBoundsRef.current)
+    floorBoundsRef.current = progress.floorBounds
+    positionsRef.current = progress.positions
+    setArtwork(progress.artwork)
+    setFloorBounds(progress.floorBounds)
+    setPieces(progress.pieces)
+    setPositions(progress.positions)
+    setZOrder(progress.zOrder)
     setSelectedPieceId(null)
     setDraggingGroup(null)
-    setIsDropping(animate)
-    setDropCycle((cycle) => cycle + 1)
-    setFeedback(animate ? 'The pieces are falling…' : INSTRUCTIONS)
+    setFeedback(INSTRUCTIONS)
+    storePuzzle(activePuzzle.id, progress)
   }
 
   useEffect(() => {
-    if (!activePuzzle) return undefined
+    const puzzle = PUZZLES.find((option) => option.id === activePuzzleId)
+    if (!puzzle) return undefined
     let cancelled = false
-    const restored = Boolean(savedPuzzlesRef.current[activePuzzle.id])
     const image = new Image()
     image.onload = () => {
-      if (cancelled) return
-      setImageError(false)
-      if (restored) return
-      const scale = 540 / Math.max(image.naturalWidth, image.naturalHeight)
-      const size = { width: image.naturalWidth * scale, height: image.naturalHeight * scale }
-      setArtwork(size)
-      resetPuzzle(size)
+      if (!cancelled) setImageError(false)
     }
     image.onerror = () => {
       if (!cancelled) {
@@ -713,22 +554,9 @@ function App() {
         setFeedback('The puzzle image could not be loaded. Try restarting.')
       }
     }
-    image.src = activePuzzle.imageUrl
+    image.src = puzzle.imageUrl
     return () => { cancelled = true }
   }, [activePuzzleId])
-
-  useEffect(() => {
-    if (!isDropping) return undefined
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const duration = reducedMotion
-      ? 0
-      : Math.max(...pieces.map((piece) => piece.fallDelay + piece.fallDuration)) + 60
-    const timer = window.setTimeout(() => {
-      setIsDropping(false)
-      setFeedback(INSTRUCTIONS)
-    }, duration)
-    return () => window.clearTimeout(timer)
-  }, [dropCycle, isDropping, pieces])
 
   useEffect(() => {
     if (!activePuzzleId) return undefined
@@ -799,7 +627,7 @@ function App() {
   }
 
   function turnPiece(pieceId, direction = 1) {
-    if (isDropping || dragRef.current || pieceId === null) return
+    if (dragRef.current || pieceId === null) return
     const group = positionsRef.current[pieceId].group
     setSelectedPieceId(pieceId)
     commitPositions(
@@ -816,7 +644,7 @@ function App() {
   }
 
   function startPieceDrag(event, pieceId) {
-    if (isDropping || dragRef.current || event.button !== 0) return
+    if (dragRef.current || event.button !== 0) return
     event.preventDefault()
     pointerTypeRef.current = event.pointerType
     event.currentTarget.focus({ preventScroll: true })
@@ -857,7 +685,7 @@ function App() {
     }
     if (drag.moved) finishGroupMove(drag.group)
     if (event.pointerType === 'touch' && !drag.moved) {
-      const now = performance.now()
+      const now = event.timeStamp
       if (tapRef.current?.pieceId === drag.pieceId && now - tapRef.current.time < 320) {
         turnPiece(drag.pieceId)
         tapRef.current = null
@@ -874,7 +702,6 @@ function App() {
   }
 
   function handlePieceKey(event, pieceId) {
-    if (isDropping) return
     if (event.key.toLowerCase() === 'r' || event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       turnPiece(pieceId, event.shiftKey ? -1 : 1)
@@ -904,179 +731,171 @@ function App() {
     finishGroupMove(group)
   }
 
+  useEffect(() => {
+    const handleGalleryShortcut = (event) => {
+      if (
+        event.defaultPrevented
+        || event.metaKey
+        || event.ctrlKey
+        || event.altKey
+        || document.documentElement.hasAttribute('data-ph-open')
+      ) return
+
+      const target = event.target
+      if (
+        target instanceof HTMLElement
+        && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) return
+
+      const key = event.key.toLowerCase()
+      if (key === 'c') {
+        event.preventDefault()
+        restartPuzzle()
+      } else if (key === 'l' && selectedPieceId !== null) {
+        event.preventDefault()
+        turnPiece(selectedPieceId, -1)
+      } else if (key === 'r' && selectedPieceId !== null) {
+        event.preventDefault()
+        turnPiece(selectedPieceId, 1)
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        navigateGallery(-1)
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        navigateGallery(1)
+      }
+    }
+
+    window.addEventListener('keydown', handleGalleryShortcut)
+    return () => window.removeEventListener('keydown', handleGalleryShortcut)
+  })
+
+  function renderPuzzleCanvas() {
+    const artworkPatternId = `puzzle-artwork-${activePuzzle.id}`
+    const grainFilterId = `paper-grain-${activePuzzle.id}`
+    const fibersPatternId = `paper-fibers-${activePuzzle.id}`
+    const sheenGradientId = `piece-sheen-${activePuzzle.id}`
+
+    return (
+      <svg
+        ref={tableRef}
+        className={`puzzle-floor inline-puzzle-floor${complete ? ' is-complete' : ''}`}
+        viewBox={`0 0 ${floorBounds.width} ${floorBounds.height}`}
+        aria-label={`${activePuzzle.level} puzzle canvas with ${pieces.length} pieces`}
+        aria-describedby="puzzle-help"
+        onPointerDown={(event) => {
+          if (event.target === event.currentTarget) setSelectedPieceId(null)
+        }}
+      >
+        <defs>
+          <pattern id={artworkPatternId} width={artwork.width} height={artwork.height} patternUnits="userSpaceOnUse">
+            <image href={activePuzzle.imageUrl} width={artwork.width} height={artwork.height} preserveAspectRatio="none" />
+          </pattern>
+          <filter id={grainFilterId} x="0" y="0" width="100%" height="100%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="3" seed="12" stitchTiles="stitch" />
+            <feColorMatrix type="saturate" values="0" />
+          </filter>
+          <pattern id={fibersPatternId} width="150" height="150" patternUnits="userSpaceOnUse">
+            <rect width="150" height="150" filter={`url(#${grainFilterId})`} opacity="0.22" />
+          </pattern>
+          <linearGradient id={sheenGradientId} x1="0" y1="0" x2="0.8" y2="1">
+            <stop offset="0" stopColor="#ffffff" stopOpacity="0.13" />
+            <stop offset="0.48" stopColor="#ffffff" stopOpacity="0.01" />
+            <stop offset="1" stopColor="#161616" stopOpacity="0.075" />
+          </linearGradient>
+        </defs>
+
+        {zOrder.map((pieceId) => {
+          const piece = pieces[pieceId]
+          const position = positions[pieceId]
+          return (
+            <g key={piece.id} transform={`translate(${position.x} ${position.y})`}>
+              <g className="piece-impact" style={impactStyle(piece.id)}>
+                <g className={`piece-shadow${position.group === draggingGroup ? ' is-lifted' : ''}`}>
+                  <g transform={`rotate(${position.rotation}) translate(${-piece.centerX} ${-piece.centerY})`}>
+                    <path className="piece-backing" d={piece.path} transform="translate(0 1.7)" />
+                    <path
+                      className={`puzzle-piece${position.group === draggingGroup ? ' is-dragging' : ''}${position.group === selectedGroup ? ' is-selected' : ''}`}
+                      d={piece.path}
+                      fill={`url(#${artworkPatternId})`}
+                      stroke="rgba(255,255,255,0.52)"
+                      strokeWidth="0.8"
+                      strokeLinejoin="round"
+                      role="button"
+                      tabIndex="0"
+                      aria-label={`Puzzle piece ${piece.id + 1}. Drag or use arrows to move. Double-click or press R to rotate.`}
+                      aria-pressed={position.group === selectedGroup}
+                      onPointerDown={(event) => startPieceDrag(event, piece.id)}
+                      onPointerMove={movePieceDrag}
+                      onPointerUp={endPieceDrag}
+                      onPointerCancel={cancelPieceDrag}
+                      onLostPointerCapture={cancelPieceDrag}
+                      onDoubleClick={() => {
+                        if (pointerTypeRef.current !== 'touch') turnPiece(piece.id)
+                      }}
+                      onContextMenu={(event) => {
+                        event.preventDefault()
+                        turnPiece(piece.id, -1)
+                      }}
+                      onKeyDown={(event) => handlePieceKey(event, piece.id)}
+                    />
+                    <path className="piece-texture" d={piece.path} fill={`url(#${fibersPatternId})`} />
+                    <path className="piece-sheen" d={piece.path} fill={`url(#${sheenGradientId})`} />
+                  </g>
+                </g>
+              </g>
+            </g>
+          )
+        })}
+      </svg>
+    )
+  }
+
+  const activeProgress = {
+    version: 1,
+    pieceGeometryVersion: PIECE_GEOMETRY_VERSION,
+    scatterVersion: SCATTER_VERSION,
+    difficultyKey: activePuzzle?.difficultyKey ?? difficulty.key,
+    imageIndex: 0,
+    artwork,
+    floorBounds,
+    pieces,
+    positions,
+    zOrder,
+  }
+
   return (
     <div className="site-shell">
       <ProjectHeader readme={readme} />
       <main className="puzzle-app">
-        {!activePuzzle ? (
-          <section className="collection-screen" aria-label="Puzzle gallery">
-            <LineMinimap
-              activeIndex={visiblePuzzleIndex}
-              puzzles={PUZZLES}
-              progress={galleryProgress}
-              progressByPuzzle={savedPuzzles}
-              onScrub={scrubPuzzleGallery}
-            />
-            <div className="collection-grid" ref={collectionRef} onScroll={syncTimelineToScroll}>
-              {PUZZLES.map((puzzle) => (
+        <section className="collection-screen" aria-label="Puzzle gallery">
+          <div className="collection-grid" ref={collectionRef} onScroll={syncPuzzleToScroll}>
+            {PUZZLES.map((puzzle) => {
+              const isInteractive = puzzle.id === activePuzzleId
+              return (
                 <PuzzleTile
                   key={puzzle.id}
                   puzzle={puzzle}
-                  progress={savedPuzzles[puzzle.id]}
-                  cursorWindRef={cursorWindRef}
+                  progress={isInteractive ? activeProgress : savedPuzzles[puzzle.id]}
+                  isInteractive={isInteractive}
+                  canvas={isInteractive ? renderPuzzleCanvas() : null}
+                  impact={navigationImpact?.puzzleIds.includes(puzzle.id) ? navigationImpact : null}
+                  toolbar={isInteractive ? (
+                    <PuzzleToolbar
+                      hasSelection={selectedPieceId !== null}
+                      onRestart={restartPuzzle}
+                      onRotate={(direction) => turnPiece(selectedPieceId, direction)}
+                    />
+                  ) : null}
                   onOpen={openPuzzle}
-                  onScatter={moveLandingPieces}
                 />
-              ))}
-            </div>
-          </section>
-        ) : (
-          <section className="game" aria-labelledby="game-title">
-            <h1 id="game-title" className="visually-hidden">
-              Puzzle {activePuzzle.number}, {activePuzzle.level}
-            </h1>
-            <div className="game-layout">
-              <div className="puzzle-options" role="group" aria-label="Puzzle controls">
-                <button type="button" onClick={leavePuzzle}>All puzzles</button>
-                <span className="active-puzzle-label">{activePuzzle.number} · {activePuzzle.level}</span>
-                <button type="button" onClick={() => imageError ? window.location.reload() : resetPuzzle(artwork, true)}>Restart</button>
-                <button
-                  type="button"
-                  className="rotate-control"
-                  disabled={selectedPieceId === null || isDropping}
-                  onClick={() => turnPiece(selectedPieceId)}
-                  title="Turn the selected piece or connected group clockwise"
-                >
-                  Rotate ↻
-                </button>
-              </div>
-
-              <div className="floor-shell">
-                <svg
-                  ref={tableRef}
-                  className={`puzzle-floor${isDropping ? ' is-dropping' : ''}${complete ? ' is-complete' : ''}`}
-                  style={{ viewTransitionName: 'active-puzzle' }}
-                  viewBox={`0 0 ${floorBounds.width} ${floorBounds.height}`}
-                  aria-label={`${activePuzzle.level} puzzle floor with ${pieces.length} pieces`}
-                  aria-describedby="puzzle-help"
-                  onPointerDown={(event) => {
-                    if (event.target === event.currentTarget) setSelectedPieceId(null)
-                  }}
-                >
-                  <defs>
-                    <pattern id="puzzle-artwork" width={artwork.width} height={artwork.height} patternUnits="userSpaceOnUse">
-                      <image href={activePuzzle.imageUrl} width={artwork.width} height={artwork.height} preserveAspectRatio="none" />
-                    </pattern>
-                    <filter id="paper-grain" x="0" y="0" width="100%" height="100%">
-                      <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="3" seed="12" stitchTiles="stitch" />
-                      <feColorMatrix type="saturate" values="0" />
-                    </filter>
-                    <pattern id="paper-fibers" width="150" height="150" patternUnits="userSpaceOnUse">
-                      <rect width="150" height="150" filter="url(#paper-grain)" opacity="0.22" />
-                    </pattern>
-                    <linearGradient id="piece-sheen" x1="0" y1="0" x2="0.8" y2="1">
-                      <stop offset="0" stopColor="#ffffff" stopOpacity="0.13" />
-                      <stop offset="0.48" stopColor="#ffffff" stopOpacity="0.01" />
-                      <stop offset="1" stopColor="#161616" stopOpacity="0.075" />
-                    </linearGradient>
-                  </defs>
-
-                  {zOrder.map((pieceId) => {
-                    const piece = pieces[pieceId]
-                    const position = positions[pieceId]
-                    const tossX = floorBounds.width / 2 - position.x + piece.throwX
-                    const tossY = -140 - position.y + piece.throwY
-                    const travelLength = Math.hypot(tossX, tossY) || 1
-                    const impactX = tossX / travelLength * piece.slideDistance - tossY / travelLength * piece.slideSkew
-                    const impactY = tossY / travelLength * piece.slideDistance + tossX / travelLength * piece.slideSkew
-                    return (
-                      <g
-                        key={`${dropCycle}-${piece.id}`}
-                        data-transition-piece={piece.id}
-                        transform={`translate(${position.x} ${position.y})`}
-                      >
-                        <g className="piece-drop" style={{
-                          '--fall-delay': `${piece.fallDelay}ms`,
-                          '--fall-duration': `${piece.fallDuration}ms`,
-                          '--toss-spin': `${piece.fallRotation}deg`,
-                          '--toss-x': `${tossX}px`,
-                          '--toss-y': `${tossY}px`,
-                          '--impact-x': `${impactX}px`,
-                          '--impact-y': `${impactY}px`,
-                          '--impact-spin': `${piece.slideSpin}deg`,
-                          '--glide-x': `${impactX * 0.52}px`,
-                          '--glide-y': `${impactY * 0.52}px`,
-                          '--glide-spin': `${piece.slideSpin * 0.52}deg`,
-                          '--settle-x': `${impactX * 0.16}px`,
-                          '--settle-y': `${impactY * 0.16}px`,
-                          '--settle-spin': `${piece.slideSpin * 0.16}deg`,
-                        }}>
-                          <g className={`piece-shadow${position.group === draggingGroup ? ' is-lifted' : ''}`}>
-                            <g transform={`rotate(${position.rotation}) translate(${-piece.centerX} ${-piece.centerY})`}>
-                              <path className="piece-backing" d={piece.path} transform="translate(0 1.7)" />
-                              <path
-                                className={`puzzle-piece${position.group === draggingGroup ? ' is-dragging' : ''}${position.group === selectedGroup ? ' is-selected' : ''}`}
-                                d={piece.path}
-                                fill="url(#puzzle-artwork)"
-                                stroke="rgba(255,255,255,0.52)"
-                                strokeWidth="0.8"
-                                strokeLinejoin="round"
-                                role="button"
-                                tabIndex="0"
-                                aria-label={`Puzzle piece ${piece.id + 1}. Drag or use arrows to move. Double-click or press R to rotate.`}
-                                aria-pressed={position.group === selectedGroup}
-                                onPointerDown={(event) => startPieceDrag(event, piece.id)}
-                                onPointerMove={movePieceDrag}
-                                onPointerUp={endPieceDrag}
-                                onPointerCancel={cancelPieceDrag}
-                                onLostPointerCapture={cancelPieceDrag}
-                                onDoubleClick={() => {
-                                  if (pointerTypeRef.current !== 'touch') turnPiece(piece.id)
-                                }}
-                                onContextMenu={(event) => {
-                                  event.preventDefault()
-                                  turnPiece(piece.id, -1)
-                                }}
-                                onKeyDown={(event) => handlePieceKey(event, piece.id)}
-                              />
-                              <path className="piece-texture" d={piece.path} fill="url(#paper-fibers)" />
-                              <path className="piece-sheen" d={piece.path} fill="url(#piece-sheen)" />
-                            </g>
-                          </g>
-                        </g>
-                      </g>
-                    )
-                  })}
-                </svg>
-                <div className="floor-status" aria-live="polite">
-                  <span id="puzzle-help">
-                    {imageError ? 'The image could not be loaded. Try restarting.' : feedback}
-                  </span>
-                  <span>{complete ? 'Complete' : `${pieces.length - remainingGroups} / ${pieces.length - 1} connections`}</span>
-                </div>
-              </div>
-
-              <aside className="reference-card" aria-label="Reference image">
-                <img src={activePuzzle.imageUrl} alt="The completed puzzle" />
-                <div className="reference-action">
-                  <button type="button" onClick={() => dialogRef.current.showModal()}>View image</button>
-                </div>
-              </aside>
-            </div>
-          </section>
-        )}
-
-        <dialog
-          ref={dialogRef}
-          className="reference-lightbox"
-          aria-label="Puzzle reference image"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) dialogRef.current.close()
-          }}
-        >
-          <button type="button" autoFocus onClick={() => dialogRef.current.close()}>Close</button>
-          <img src={activePuzzle?.imageUrl ?? PUZZLE_IMAGE} alt="The completed puzzle at full size" />
-        </dialog>
+              )
+            })}
+          </div>
+        </section>
+        <span id="puzzle-help" className="visually-hidden" aria-live="polite">
+          {imageError ? 'The image could not be loaded.' : feedback}
+        </span>
       </main>
     </div>
   )
