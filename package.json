@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
-    "@helenhsong/ui": "git+https://github.com/helenhsong/ui.git#1619ee09d8d3ddfaf6d771f8a9f76d01d2dfb7fe",
+    "@helenhsong/ui": "git+https://github.com/helenhsong/ui.git#3776b46f1702f637fc9361341f0d2c2766d5e0e0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
